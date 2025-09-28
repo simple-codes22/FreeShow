@@ -6,12 +6,13 @@ import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
 import { activePopup, alertMessage, chumsSyncCategories, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
-import { wait } from "./common"
+import { wait, waitUntilValueIsDefined } from "./common"
 import { setLanguage } from "./language"
 import { storeSubscriber } from "./listeners"
 import { receiveOUTPUTasOUTPUT, remoteListen, setupMainReceivers } from "./receivers"
 import { destroy, receive, send } from "./request"
 import { save, unsavedUpdater } from "./save"
+import { cameraManager } from "../media/cameraManager"
 
 let initialized = false
 export function startup() {
@@ -47,7 +48,7 @@ async function startupMain() {
     await wait(100)
     getStoredData()
 
-    await waitUntilDefined(() => get(loaded))
+    await waitUntilValueIsDefined(() => get(loaded), 100, 8000)
     storeSubscriber()
     remoteListen()
     checkStartupActions()
@@ -63,6 +64,7 @@ async function startupMain() {
 
     await wait(5000)
     unsavedUpdater()
+    cameraManager.initializeCameraWarming()
 
     // CHECK LISTENERS
     // console.log(window.api.getListeners())
@@ -82,7 +84,9 @@ function autoBackup() {
             a.autoBackupPrevious = now - 3600000
             return a
         })
-        save(false, { backup: true, isAutoBackup: true })
+
+        // 20% chance of backing up all shows as well (just in case)
+        save(false, { backup: true, isAutoBackup: true, backupShows: Math.random() < 0.2 })
     }
 }
 
@@ -113,33 +117,16 @@ function getMainData() {
 async function getStoredData() {
     sendMainMultiple([Main.SYNCED_SETTINGS, Main.STAGE_SHOWS, Main.PROJECTS, Main.OVERLAYS, Main.TEMPLATES, Main.EVENTS, Main.MEDIA, Main.THEMES, Main.DRIVE_API_KEY, Main.HISTORY, Main.CACHE, Main.USAGE])
 
-    await waitUntilDefined(() => get(loadedState).includes("synced_settings"))
+    await waitUntilValueIsDefined(() => get(loadedState).includes("synced_settings"), 200, 8000)
     sendMain(Main.SETTINGS)
 }
 
 async function startupOutput() {
-    setLanguage() // this is only needed for the context menu
+    setLanguage() // this is only needed for the context menu (and stage display)
     receive(OUTPUT, receiveOUTPUTasOUTPUT)
 
     // wait a bit on slow computers
     await wait(200)
 
     send(OUTPUT, ["REQUEST_DATA_MAIN"])
-}
-
-const UPDATE_INTERVAL = 200
-const MAX_TIME = 8000
-async function waitUntilDefined(getValue: any) {
-    return new Promise((resolve) => {
-        let timeWaited = 0
-        const checkDefinedInterval = setInterval(checkValue, UPDATE_INTERVAL)
-
-        function checkValue() {
-            timeWaited += UPDATE_INTERVAL
-            if (!getValue() && timeWaited < MAX_TIME) return
-
-            clearInterval(checkDefinedInterval)
-            resolve(true)
-        }
-    })
 }

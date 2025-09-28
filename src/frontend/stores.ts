@@ -1,7 +1,6 @@
 // ----- FreeShow -----
 // Here are all the global app variables
 
-import type { Family } from "css-fonts"
 import type { ICommonTagsResult } from "music-metadata"
 import { type Writable, writable } from "svelte/store"
 import type { Bible } from "../types/Bible"
@@ -9,7 +8,7 @@ import type { Event } from "../types/Calendar"
 import type { Draw, DrawLine, DrawSettings, DrawTools } from "../types/Draw"
 import type { Effects } from "../types/Effects"
 import type { History, HistoryNew } from "../types/History"
-import type { ActiveEdit, Clipboard, Media, MediaOptions, NumberObject, OS, Popups, Selected, SlidesOptions, Trigger, Variable } from "../types/Main"
+import type { ActiveEdit, Clipboard, Media, MediaOptions, NumberObject, OS, Popups, Profiles, Selected, SlidesOptions, Trigger, Variable } from "../types/Main"
 import type { Folders, Projects, ShowRef } from "../types/Projects"
 import type { Dictionary, Styles, Themes } from "../types/Settings"
 import type { Action, Emitter, ID, Overlays, ShowGroups, ShowList, Shows, ShowType, SlideTimer, Tag, Templates, Timer, Transition, TrimmedShows } from "../types/Show"
@@ -56,6 +55,8 @@ export const activeRename: Writable<any> = writable(null)
 export const activeDrawerTab: Writable<DrawerTabIds> = writable("shows")
 export const drawerOpenedInEdit: Writable<boolean> = writable(false)
 export const activeStyle: Writable<string> = writable("")
+export const selectedProfile: Writable<string | null> = writable(null)
+export const activeProfile: Writable<string | null> = writable(null)
 export const settingsTab: Writable<SettingsTabs> = writable("general")
 export const projectView: Writable<boolean> = writable(false)
 export const showRecentlyUsedProjects: Writable<boolean> = writable(true)
@@ -70,6 +71,7 @@ export const activeTriggerFunction: Writable<string> = writable("")
 export const guideActive: Writable<boolean> = writable(false)
 export const runningActions: Writable<string[]> = writable([])
 export const activeSlideRecording: Writable<any> = writable(null)
+export const scriptureMode: Writable<"grid" | "list"> = writable("list")
 export const pcoConnected: Writable<boolean> = writable(false)
 export const chumsConnected: Writable<boolean> = writable(false)
 export const chumsSyncCategories: Writable<string[]> = writable([])
@@ -104,7 +106,7 @@ export const paintCache: Writable<DrawLine[]> = writable([])
 
 // OUTPUTS
 export const outputDisplay: Writable<boolean> = writable(false)
-export const outputState: Writable<{ id: string; active: boolean }[]> = writable([])
+export const outputState: Writable<{ id: string; active: boolean | "invisible" }[]> = writable([])
 export const currentOutputSettings: Writable<string | null> = writable(null)
 export const slideTimers: Writable<{ [key: string]: SlideTimer }> = writable({})
 export const outputCache: Writable<any> = writable(null)
@@ -119,8 +121,10 @@ export const toggleOutputEnabled: Writable<boolean> = writable(false)
 export const customMessageCredits: Writable<string> = writable("")
 export const presentationData: Writable<any> = writable({})
 export const presentationApps: Writable<null | string[]> = writable(null)
-export const colorbars: Writable<string> = writable("")
+export const colorbars: Writable<{ [key: string]: string }> = writable({})
+export const livePrepare: Writable<{ [key: string]: boolean }> = writable({})
 export const overlayTimers: Writable<{ [key: string]: { outputId: string; overlayId: string; timer: NodeJS.Timeout } }> = writable({})
+export const slideVideoData: Writable<{ [key: string]: { [key: string]: { currentTime: number; duration: number; isPaused: boolean; loop?: boolean } } }> = writable({})
 
 // EXPORT
 export const exportOptions: Writable<any> = writable({ pdf: { rows: 5, columns: 2, slide: true, text: true } })
@@ -135,6 +139,8 @@ export const scriptureHistory: Writable<any[]> = writable([])
 export const actionHistory: Writable<{ action: string; data: any; time: number; count: number }[]> = writable([])
 export const audioData: Writable<{ [key: string]: { metadata: ICommonTagsResult } }> = writable({})
 export const customScriptureBooks: Writable<{ [key: string]: string[] }> = writable({})
+export const scriptureHistoryUsed: Writable<boolean> = writable(false)
+export const actionRevealUsed: Writable<boolean> = writable(false)
 
 // EDIT
 export const editColumns: Writable<number> = writable(1)
@@ -145,7 +151,6 @@ export const triggerAutoSplit: Writable<boolean> = writable(false)
 export const storedEditMenuState: Writable<any> = writable({})
 export const copyPasteEdit: Writable<any> = writable({})
 export const textEditActive: Writable<boolean> = writable(false)
-export const includeEmptySlides: Writable<boolean> = writable(false)
 export const textEditZoom: Writable<number> = writable(10)
 export const spellcheck: Writable<{ misspelled: string; suggestions: string[] } | null> = writable(null)
 
@@ -154,7 +159,6 @@ export const notFound: Writable<any> = writable({ show: [], bible: [] })
 export const toastMessages: Writable<string[]> = writable([])
 export const alertMessage: Writable<string> = writable("")
 export const popupData: Writable<any> = writable({})
-export const systemFonts: Writable<Family[]> = writable([])
 export const previousShow: Writable<any> = writable(null)
 export const projectToolSize: Writable<number> = writable(150)
 export const forceClock: Writable<boolean> = writable(false)
@@ -171,7 +175,7 @@ export const contextData: Writable<any> = writable({})
 export const lessonsLoaded: Writable<any> = writable({})
 export const storedChordsData: Writable<any> = writable({})
 export const photoApiCredits: Writable<any> = writable({})
-export const errorHasOccured: Writable<boolean> = writable(false)
+export const errorHasOccurred: Writable<boolean> = writable(false)
 export const disableDragging: Writable<boolean> = writable(false)
 export const activeDropId: Writable<string> = writable("")
 export const randomNumberVariable: Writable<{ [key: string]: boolean }> = writable({})
@@ -259,7 +263,7 @@ export const scriptureSettings: Writable<any> = writable({ template: "scripture"
 // DRAWER
 export const drawerTabsData: Writable<DrawerTabs> = writable({}) // {default}
 export const mediaOptions: Writable<MediaOptions> = writable({ columns: 5, mode: "grid" }) // {default}
-export const drawer: Writable<{ height: number; stored: null | number }> = writable({ height: 300, stored: null }) // {default}
+export const drawer: Writable<{ height: number; stored: null | number; autoclosed?: boolean }> = writable({ height: 300, stored: null }) // {default}
 
 // TAGS
 export const globalTags: Writable<{ [key: string]: Tag }> = writable({}) // {}
@@ -298,6 +302,9 @@ export const styles: Writable<{ [key: string]: Styles }> = writable({}) // {}
 // OUTPUTS
 export const outputs: Writable<Outputs> = writable({}) // {default}
 export const outLocked: Writable<boolean> = writable(false) // false
+
+// PROFILES
+export const profiles: Writable<Profiles> = writable({}) // {}
 
 // MIDI
 export const actions: Writable<{ [key: string]: Action }> = writable({}) // {}
@@ -352,7 +359,6 @@ export const $ = {
     exportOptions,
     notFound,
     alertMessage,
-    systemFonts,
     previousShow,
     projectToolSize,
     forceClock,

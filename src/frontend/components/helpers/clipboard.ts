@@ -6,11 +6,13 @@ import type { Folder, Project } from "../../../types/Projects"
 import type { Item } from "../../../types/Show"
 import { sendMain } from "../../IPC/main"
 import {
+    actions,
     activeDays,
     activeDrawerTab,
     activePage,
     activePopup,
     activeProject,
+    activeRename,
     activeShow,
     activeStage,
     audioFolders,
@@ -19,17 +21,18 @@ import {
     categories,
     clipboard,
     currentOutputSettings,
-    dictionary,
     drawerTabsData,
+    effects,
     events,
     focusedArea,
     folders,
     media,
     mediaFolders,
-    actions,
     outputs,
     overlayCategories,
     overlays,
+    popupData,
+    profiles,
     projects,
     refreshEditSlide,
     scriptures,
@@ -46,10 +49,10 @@ import {
     timers,
     triggers,
     variables,
-    videoMarkers,
-    effects
+    videoMarkers
 } from "../../stores"
 import { newToast, triggerFunction } from "../../utils/common"
+import { translateText } from "../../utils/language"
 import { removeSlide } from "../context/menuClick"
 import { deleteTimer } from "../drawer/timers/timers"
 import { updateSortedStageItems } from "../edit/scripts/itemHelpers"
@@ -59,6 +62,7 @@ import { clone, keysToID, removeDeleted, removeDuplicates } from "./array"
 import { pasteText } from "./caretHelper"
 import { history } from "./history"
 import { getFileName, removeExtension } from "./media"
+import { select } from "./select"
 import { loadShows } from "./setShow"
 import { checkName, getLayoutRef } from "./show"
 import { _show } from "./shows"
@@ -73,6 +77,9 @@ export function copy(clip: Clipboard | null = null, getData = true, shouldDuplic
 
     if (get(selected).id) copyData = get(selected)
     else if (get(activeEdit).items.length) copyData = { id: "item", data: get(activeEdit) }
+    else if (get(activePage) === "stage" && get(activeStage).items?.length) {
+        copyData = { id: "stage_item", data: get(activeStage) }
+    }
 
     if (!copyData?.id || !copyActions[copyData.id]) {
         if (copyData?.id) console.info("No copy action:", copyData)
@@ -115,7 +122,7 @@ export function paste(clip: Clipboard | null = null, extraData: any = {}, custom
 
     // custom media paste: only paste on selected ones
     if (clip.id === "media") {
-        mediaPaste(clip.data)
+        mediaPaste(clip.data[0])
         return
     }
 
@@ -129,17 +136,17 @@ export function paste(clip: Clipboard | null = null, extraData: any = {}, custom
 }
 
 export function cut(clip: Clipboard | null = null) {
-    //Handle text directly
+    // Handle text directly
     if (window.getSelection()?.toString()) {
         const selection = window.getSelection()!
         navigator.clipboard.writeText(selection.toString())
-        selection.deleteFromDocument();
+        selection.deleteFromDocument()
         console.info("CUTTED TEXT", selection.toString())
         return
     }
-    //Handle other types
+    // Handle other types
     const copyData = copy(clip)
-    if (!copyData) return 
+    if (!copyData) return
     deleteAction(copyData)
 
     console.info("CUTTED:", copyData)
@@ -181,7 +188,7 @@ export function duplicate(clip: Clipboard | null = null) {
 export function selectAll(data: any = {}) {
     const activeElem = document.activeElement
     if (activeElem?.nodeName === "INPUT" || activeElem?.nodeName === "TEXTAREA") {
-        ;(activeElem as HTMLInputElement).select()
+        ; (activeElem as HTMLInputElement).select()
         return
     }
 
@@ -478,7 +485,7 @@ const copyActions = {
             if (!mediaCopyKeys.includes(key)) return
             mediaData[key] = value
         })
-        return { origin: path, data: mediaData, type: data[0]?.type }
+        return [{ origin: path, data: mediaData, type: data[0]?.type }]
     },
     // project items
     show: (data: any) => {
@@ -488,6 +495,20 @@ const copyActions = {
             projectItems.push(item)
         })
         return projectItems
+    },
+    stage_item: (data: any) => {
+        const stageId: string = data.id || ""
+        const selectedItemIds: string[] = data.items || []
+        const stage = get(stageShows)[stageId]
+
+        if (!stage || !selectedItemIds.length) return []
+
+        const copiedItems = selectedItemIds.map((itemId) => {
+            const item = clone(stage.items[itemId])
+            return item
+        })
+
+        return copiedItems
     }
 }
 
@@ -616,7 +637,9 @@ const pasteActions = {
             const newSlide = clone(slide)
             delete newSlide.isDefault
             newSlide.name += " (2)"
-            history({ id: "UPDATE", newData: { data: newSlide }, location: { page: "drawer", id: "overlay" } })
+            const newId = uid()
+            history({ id: "UPDATE", newData: { data: newSlide }, oldData: { id: newId }, location: { page: "drawer", id: "overlay" } })
+            if (data.length === 1) activeRename.set("overlay_" + newId)
         })
     },
     template: (data: any) => {
@@ -624,7 +647,9 @@ const pasteActions = {
             const newSlide = clone(slide)
             delete newSlide.isDefault
             newSlide.name += " (2)"
-            history({ id: "UPDATE", newData: { data: newSlide }, location: { page: "drawer", id: "template" } })
+            const newId = uid()
+            history({ id: "UPDATE", newData: { data: newSlide }, oldData: { id: newId }, location: { page: "drawer", id: "template" } })
+            if (data.length === 1) activeRename.set("template_" + newId)
         })
     },
     effect: (data: any) => {
@@ -640,6 +665,33 @@ const pasteActions = {
         projects.update((a) => {
             if (!a[get(activeProject) || ""]?.shows) return a
             a[get(activeProject) || ""].shows.push(...data)
+            return a
+        })
+    },
+    stage_item: (data: any) => {
+        const stageId = get(activeStage).id
+        if (!stageId || !data?.length) return
+
+        const stage = clone(get(stageShows)[stageId])
+        const newItemIds: string[] = []
+
+        data.forEach((item) => {
+            const newItemId = uid(5)
+            stage.items[newItemId] = clone(item)
+            newItemIds.push(newItemId)
+        })
+
+        history({
+            id: "UPDATE",
+            newData: { data: stage.items, key: "items" },
+            oldData: { id: stageId },
+            location: { page: "stage", id: "stage_item_content" }
+        })
+        updateSortedStageItems()
+
+        // Select the newly pasted items
+        activeStage.update((a) => {
+            a.items = newItemIds
             return a
         })
     }
@@ -801,11 +853,11 @@ const deleteActions = {
         // remove from all layouts
         const ref = getLayoutRef()
         ref.forEach((slideRef, i) => {
-            const actions = clone(slideRef.data.actions) || {}
-            if (actions[key] !== id) return
-            delete actions[key]
+            const slideActions = clone(slideRef.data.actions) || {}
+            if (slideActions[key] !== id) return
+            delete slideActions[key]
 
-            history({ id: "SHOW_LAYOUT", newData: { key: "actions", data: actions, indexes: [i] } })
+            history({ id: "SHOW_LAYOUT", newData: { key: "actions", data: slideActions, indexes: [i] } })
         })
 
         if (data.type === "in") {
@@ -859,8 +911,24 @@ const deleteActions = {
             data.forEach((id: string) => {
                 history({ id: "UPDATE", newData: { id: get(activeShow)?.id }, oldData: { key: "layouts", subkey: id }, location: { page: "show", id: "show_layout" } })
             })
+
+            // remove from active project if any
+            projects.update(a => {
+                if (!a[get(activeProject) || ""]?.shows) return a
+
+                data.forEach((layoutId: string) => {
+                    a[get(activeProject) || ""].shows.forEach(show => {
+                        if (show.layout !== layoutId) return
+
+                        delete show.layout
+                        delete show.layoutInfo
+                    })
+                })
+
+                return a
+            })
         } else {
-            newToast("$error.keep_one_layout")
+            newToast("error.keep_one_layout")
         }
     },
     video_subtitle: (data: any) => {
@@ -901,13 +969,15 @@ const deleteActions = {
     },
     output: (data: any) => {
         data.forEach(({ id }) => {
-            // delete key output
-            if (get(outputs)[id]?.keyOutput) history({ id: "UPDATE", newData: { id: get(outputs)[id].keyOutput }, location: { page: "settings", id: "settings_output" } })
-
             history({ id: "UPDATE", newData: { id }, location: { page: "settings", id: "settings_output" } })
         })
 
         currentOutputSettings.set(Object.keys(get(outputs))[0])
+    },
+    profile: (data: any) => {
+        data.forEach(({ id }) => {
+            history({ id: "UPDATE", newData: { id }, location: { page: "settings", id: "settings_profile" } })
+        })
     },
     tag: (data: any) => {
         const tagId = data[0]?.id || ""
@@ -1055,7 +1125,7 @@ const duplicateActions = {
         data.forEach(({ id }) => {
             const theme = clone(get(themes)[id])
             let name = theme.name
-            if (theme.default) name = get(dictionary).themes?.[name] || name
+            if (theme.default) name = translateText("themes." + name)
 
             history({ id: "UPDATE", newData: { data: theme, replace: { default: false, name: name + " 2" } }, location: { page: "settings", id: "settings_theme" } })
         })
@@ -1074,27 +1144,70 @@ const duplicateActions = {
             history({ id: "UPDATE", newData: { data: output, replace: { name: output.name + " 2" } }, oldData: { id }, location: { page: "settings", id: "settings_output" } })
         })
     },
+    profile: (data: any) => {
+        data.forEach(({ id }) => {
+            const profile = clone(get(profiles)[id])
+            id = uid()
+            history({ id: "UPDATE", newData: { data: profile, replace: { name: profile.name + " 2" } }, oldData: { id }, location: { page: "settings", id: "settings_profile" } })
+        })
+    },
     action: (data: any) => {
         actions.update((a) => {
             data.forEach(({ id }) => {
-                const newAction = clone(get(actions)[id])
-                newAction.name += " 2"
+                if (!a[id] || a[id].shows?.length) return
+
+                const newAction = clone(a[id])
+                // newAction.name = data.length === 1 ? "" : newAction.name + " 2"
+                newAction.name = newAction.name + " 2"
 
                 const newId = uid()
                 a[newId] = newAction
+
+                if (data.length === 1) {
+                    popupData.set({ id: newId })
+                    activePopup.set("action")
+                }
+            })
+
+            return a
+        })
+
+        selected.set({ id: null, data: [] })
+    },
+    global_timer: (data: any) => {
+        timers.update((a) => {
+            data.forEach(({ id }) => {
+                const newTimer = clone(a[id])
+                // newTimer.name = data.length === 1 ? "" : newTimer.name + " 2"
+                newTimer.name = newTimer.name + " 2"
+
+                const newId = uid()
+                a[newId] = newTimer
+
+                if (data.length === 1) {
+                    select("timer", { id: newId })
+                    activePopup.set("timer")
+                }
             })
 
             return a
         })
     },
-    global_timer: (data: any) => {
-        timers.update((a) => {
+    variable: (data: any) => {
+        variables.update((a) => {
             data.forEach(({ id }) => {
-                const newTimer = clone(get(timers)[id])
-                newTimer.name += " 2"
+                const newVariable = clone(a[id])
+                // add name (can't rename currently)
+                // newVariable.name = newVariable.name + " 2"
+                newVariable.name = data.length === 1 ? "" : newVariable.name + " 2"
 
                 const newId = uid()
-                a[newId] = newTimer
+                a[newId] = newVariable
+
+                if (data.length === 1) {
+                    selected.set({ id: "variable", data: [{ id: newId }] })
+                    activePopup.set("variable")
+                }
             })
 
             return a
@@ -1102,17 +1215,23 @@ const duplicateActions = {
     }
 }
 
-const mediaCopyKeys = ["filter", "fit", "flipped", "flippedY", "speed", "volume"]
+const videoKeys = ["speed", "volume"]
+const mediaCopyKeys = ["filter", "fit", "flipped", "flippedY", "speed", "volume", "videoType"]
 function mediaPaste(data: any) {
     if (!data || get(selected).id !== "media") return
 
+    const selectedMedia = get(selected).data || []
+    const multipleTypes = (new Set(selectedMedia.map(a => a.type))).size > 1
+
     media.update((a) => {
-        ;(get(selected).data || []).forEach(({ path, type }) => {
-            // only paste on media with same type & don't paste back on itself
-            if (type !== data.type || path === data.path) return
+        selectedMedia.forEach(({ path, type }) => {
+            // only paste on media with same type (if mixed selection) & don't paste back on itself
+            if ((multipleTypes && type !== data.type) || path === data.path) return
 
             if (!a[path]) a[path] = {}
             mediaCopyKeys.forEach((key) => {
+                if (videoKeys.includes(key) && type !== "video") return
+
                 if (data.data[key] === undefined) delete a[path][key]
                 else a[path][key] = data.data[key]
             })
@@ -1137,6 +1256,12 @@ async function duplicateShows(selectedData: any) {
 
         show.name = checkName(show.name + " 2")
         show.timestamps.modified = new Date().getTime()
-        history({ id: "UPDATE", newData: { data: show, remember: { project: id === "show" ? get(activeProject) : null } }, location: { page: "show", id: "show" } })
+
+        const newId = uid()
+        history({ id: "UPDATE", newData: { data: show, remember: { project: id === "show" ? get(activeProject) : null } }, oldData: { id: newId }, location: { page: "show", id: "show" } })
+
+        if (selectedData.length === 1) {
+            activeRename.set("show_drawer_" + newId)
+        }
     })
 }

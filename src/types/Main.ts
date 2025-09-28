@@ -1,6 +1,5 @@
 import type fs from "fs"
 import type { dataFolderNames } from "../electron/utils/files"
-import type { ShowRef } from "./Projects"
 import type { Cropping } from "./Settings"
 
 export interface OS {
@@ -12,6 +11,7 @@ export interface OS {
 export interface Option {
     name: string
     extra?: string
+    extraInfo?: string
     data?: any
     id?: string | null
     icon?: string
@@ -31,6 +31,16 @@ export interface Time {
     m: string
     h: string
     d: number
+}
+
+export interface ClickEvent {
+    detail: {
+        ctrl: boolean
+        shift: boolean
+        alt: boolean
+        doubleClick: boolean
+        target: EventTarget
+    }
 }
 
 export type SelectIds =
@@ -78,6 +88,7 @@ export type SelectIds =
     | "theme"
     | "style"
     | "output"
+    | "profile"
     | "tag"
     | "bible_book"
 
@@ -136,10 +147,12 @@ export interface Media {
     [key: string]: MediaStyle
 }
 export interface MediaStyle {
+    creationTime?: number // used for checking valid media thumbnail cache
     filter?: string
     flipped?: boolean
     flippedY?: boolean
-    fit?: MediaFit
+    fit?: MediaFit | ""
+    fitOptions?: any
     speed?: string
     fromTime?: number
     toTime?: number
@@ -154,6 +167,7 @@ export interface MediaStyle {
     tracks?: Subtitle[]
     subtitle?: string
     tags?: string[] // media tags
+    pingbackUrl?: string // URL to ping after 30+ seconds of playback
     cropping?: Partial<Cropping>
 
     ignoreLayer?: boolean // foreground background type
@@ -177,7 +191,7 @@ export interface MainFilePaths {
 }
 
 export type LyricSearchResult = {
-    source: "Genius" | "Hymnary" | "Letras"
+    source: "Genius" | "Hymnary" | "Letras" | "Ultimate Guitar"
     key: string
     artist: string
     title: string
@@ -212,7 +226,7 @@ export interface LessonFile {
 export interface Variable {
     id?: string
     name: string
-    type: "number" | "random_number" | "text"
+    type: "number" | "random_number" | "text" | "text_set"
     tags?: string[]
 
     // number
@@ -232,6 +246,11 @@ export interface Variable {
     // text
     text?: string
     enabled?: boolean
+
+    // text set
+    activeTextSet?: number
+    textSetKeys?: string[]
+    textSets?: { [key: string]: string }[]
 }
 
 export interface Trigger {
@@ -249,12 +268,21 @@ export interface FileData {
     thumbnailPath?: string
 }
 
+export interface Profiles {
+    [key: string]: Profile
+}
+export interface Profile {
+    name: string
+    color: string
+    image: string
+    access: { [key: string]: { [key: string]: AccessType } }
+}
+export type AccessType = "none" | "read" | "write"
+
 export interface ErrorLog {
     time: Date
     os: string
     version: string
-    active: { window: string; page: string; show: ShowRef | null; edit: ActiveEdit }
-    drawer: { active: string }
     type: string
     source: string
     message: string
@@ -264,6 +292,7 @@ export interface ErrorLog {
 
 export type Popups =
     | "initialize"
+    | "confirm"
     | "custom_text"
     | "import"
     | "songbeamer_import"
@@ -296,6 +325,7 @@ export type Popups =
     | "media_fit"
     | "metadata_display"
     | "import_scripture"
+    | "create_collection"
     | "scripture_show"
     | "edit_event"
     | "choose_chord"
@@ -313,7 +343,6 @@ export type Popups =
     | "next_timer"
     | "display_duration"
     | "manage_tags"
-    | "advanced_settings"
     | "about"
     | "shortcuts"
     | "unsaved"
@@ -325,6 +354,7 @@ export type Popups =
     | "action"
     | "category_action"
     | "custom_action"
+    | "slide_midi"
     | "user_data_overwrite"
     | "connect"
     | "cloud_update"

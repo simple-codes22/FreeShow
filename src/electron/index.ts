@@ -2,7 +2,7 @@
 // This is the electron entry point
 
 import type { Rectangle } from "electron"
-import { BrowserWindow, Menu, app, ipcMain, screen } from "electron"
+import { BrowserWindow, Menu, app, ipcMain, powerSaveBlocker, screen } from "electron"
 import { AUDIO, CLOUD, EXPORT, MAIN, NDI, OUTPUT, RECORDER, STARTUP } from "../types/Channels"
 import { Main } from "../types/IPC/Main"
 import type { Dictionary } from "../types/Settings"
@@ -48,11 +48,14 @@ if (!isProd) console.info("Building app! (This may take 20-90 seconds)")
 // set application menu
 setGlobalMenu()
 
-// disable hardware acceleration by default
-if (config.get("disableHardwareAcceleration") !== false) {
-    // Video flickers, especially on ARM mac otherwise. Performance is actually better without (most of the time).
+// disable hardware acceleration by default (on mac)
+let disableHWA = config.get("disableHardwareAcceleration")
+if (disableHWA === null) disableHWA = isMac
+if (disableHWA !== false) {
+    // Video flickers, especially on ARM mac otherwise. Performance is actually better without on macOS (most of the time).
     // this should remove flickers on videos, but we have had reports of increased CPU usage in a lot of cases.
     // https://www.electronjs.org/docs/latest/tutorial/offscreen-rendering
+    // on Windows it's often better with hardware acceleration
     app.disableHardwareAcceleration()
 } else {
     console.info("Starting with Hardware Acceleration")
@@ -62,13 +65,41 @@ if (config.get("disableHardwareAcceleration") !== false) {
 if (RECORD_STARTUP_TIME) console.time("Full startup")
 app.on("ready", startApp)
 
-function startApp() {
+export let powerSaveBlockerId: number | null = null
+async function startApp() {
     if (RECORD_STARTUP_TIME) console.time("Initial")
+
+    // Wait for Widevine CDM components to be ready (required for castlabs electron)
+    try {
+        const { components } = require("electron")
+        await components.whenReady()
+        console.info("Widevine CDM components ready")
+    } catch (err) {
+        console.warn("Failed to initialize Widevine CDM components:", err)
+    }
+
     setTimeout(createLoading)
-    updateDataPath({ load: true })
+
+    // Start these heavy operations in parallel, not blocking main window creation
+    Promise.resolve()
+        .then(() => {
+            updateDataPath({ load: true })
+        })
+        .catch(console.error)
+
+    // Start servers initialization early (asynchronously)
+    Promise.resolve()
+        .then(() => {
+            require("./servers")
+        })
+        .catch(console.error)
+
     if (RECORD_STARTUP_TIME) console.timeEnd("Initial")
 
     createMain()
+
+    // prevent display sleeping
+    powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep')
 }
 
 // ----- LOADING WINDOW -----
@@ -83,7 +114,7 @@ function createLoading() {
 // ----- MAIN WINDOW -----
 
 export let mainWindow: BrowserWindow | null = null
-const MIN_WINDOW_SIZE = 200
+const MIN_WINDOW_SIZE = 400
 const DEFAULT_WINDOW_SIZE = { width: 800, height: 600 }
 function createMain() {
     if (RECORD_STARTUP_TIME) console.time("Main window")
@@ -94,7 +125,7 @@ function createMain() {
         width: getWindowBounds("width"),
         height: getWindowBounds("height"),
         frame: !isProd || !isWindows,
-        autoHideMenuBar: isProd && isWindows,
+        autoHideMenuBar: isProd && isWindows
     }
 
     // should be centered to screen if x & y is not set (or bottom left on mac)

@@ -1,8 +1,9 @@
 <script lang="ts">
     import { getDocument, GlobalWorkerOptions } from "pdfjs-dist"
-    import type { MediaStyle } from "../../../types/Main"
+    import type { ClickEvent, MediaStyle } from "../../../types/Main"
     import { AudioPlayer } from "../../audio/audioPlayer"
     import { activeEdit, activeFocus, activePage, activeProject, activeShow, categories, focusMode, media, notFound, outLocked, outputs, overlays, playerVideos, playingAudio, projects, refreshEditSlide, shows, showsCache, styles } from "../../stores"
+    import { getAccess } from "../../utils/profile"
     import { historyAwait } from "../helpers/history"
     import Icon from "../helpers/Icon.svelte"
     import { getFileName, getMediaStyle, removeExtension } from "../helpers/media"
@@ -12,8 +13,10 @@
     import { swichProjectItem, updateOut } from "../helpers/showActions"
     import { joinTime, secondsToTime } from "../helpers/time"
     import { clearBackground } from "../output/clear"
-    import Button from "./Button.svelte"
     import HiddenInput from "./HiddenInput.svelte"
+    import MaterialButton from "./MaterialButton.svelte"
+
+    export let active: string | null = null
 
     export let id: string
     export let show: any // ShowList | ShowRef
@@ -23,6 +26,9 @@
     $: name = type === "show" ? $shows[show.id]?.name : type === "overlay" ? $overlays[show.id]?.name : type === "player" ? ($playerVideos[id] ? $playerVideos[id].name : setNotFound(id)) : show.name
     // export let page: "side" | "drawer" = "drawer"
     export let match: null | number = null
+
+    let profile = getAccess("shows")
+    let readOnly = profile.global === "read" || profile[show.category] === "read"
 
     // search
     $: style = match !== null ? `background: linear-gradient(to right, var(--primary-lighter) ${match}%, transparent ${match}%);` : ""
@@ -64,11 +70,12 @@
     }
 
     $: selectedItem = $focusMode ? $activeFocus : $activeShow
-    $: active = index !== null ? selectedItem?.index === index : selectedItem?.id === id
+    $: isActive = index !== null ? selectedItem?.index === index : selectedItem?.id === id
 
     let editActive = false
-    function click(e: any) {
-        if (editActive || e.ctrlKey || e.metaKey || e.shiftKey || active || e.target.closest("input")) return
+    function click(e: ClickEvent) {
+        const { ctrl, shift, target } = e.detail
+        if (editActive || ctrl || shift || isActive || target.closest("input")) return
 
         // set active show
         let pos = index
@@ -110,8 +117,8 @@
         if ($activePage === "edit") refreshEditSlide.set(true)
     }
 
-    async function doubleClick(e: any) {
-        if (editActive || $outLocked || e.target.closest("input")) return
+    async function doubleClick(e: ClickEvent) {
+        if (editActive || $outLocked || e.detail.target.closest("input")) return
 
         let outputId: string = getActiveOutputs($outputs, false, true, true)[0]
         let currentOutput = $outputs[outputId] || {}
@@ -119,7 +126,7 @@
         if (type === "show" && $showsCache[id] && $showsCache[id].layouts[$showsCache[id].settings.activeLayout]?.slides?.length) {
             let layoutRef = getLayoutRef()
             let firstEnabledIndex: number = layoutRef.findIndex((a) => !a.data.disabled) || 0
-            updateOut("active", firstEnabledIndex, layoutRef, !e.altKey)
+            updateOut("active", firstEnabledIndex, layoutRef, !e.detail.alt)
 
             let slide = currentOutput.out?.slide || null
             if (slide?.id === id && slide?.index === firstEnabledIndex && slide?.layout === $showsCache[id].settings.activeLayout) return
@@ -151,35 +158,58 @@
     }
 
     function rename(e: any) {
+        if (readOnly) return
+
         const name = checkName(e.detail.value, id)
         historyAwait([id], { id: "SHOWS", newData: { data: [{ id, show: { name } }], replace: true }, location: { page: "drawer" } })
         // WIP this does not update in the shows drawer before refresh (if checkName updates the name)
     }
 
     let activeOutput: string | null = null
-    $: if ($outputs) activeOutput = findMatchingOut(id)
+    $: if ($outputs) {
+        activeOutput = findMatchingOut(id)
+
+        // only highlight if the set layout is outputted
+        if (activeOutput && show.layoutInfo?.name) {
+            const outputId = getActiveOutputs($outputs, true, true, true)[0]
+            const selectedLayoutId = Object.entries($showsCache[id]?.layouts).find(([_id, a]) => a.name === show.layoutInfo.name)?.[0]
+            if ($outputs[outputId]?.out?.slide?.layout !== selectedLayoutId) activeOutput = null
+        }
+    }
 
     $: outline = activeOutput !== null || !!$playingAudio[id]
 </script>
 
 <div id="show_{id}" class="main">
-    <Button on:click={click} on:dblclick={doubleClick} {active} outlineColor={activeOutput} {outline} class="context {$$props.class}" {style} bold={false} border red={$notFound.show?.includes(id)}>
+    <MaterialButton
+        on:click={click}
+        on:dblclick={doubleClick}
+        {isActive}
+        showOutline={outline}
+        class="context {$$props.class}{readOnly ? '_readonly' : ''}"
+        style="font-weight: normal;--outline-color: {activeOutput || 'var(--secondary)'};{$notFound.show?.includes(id) ? 'background-color: rgb(255 0 0 / 0.2);' : ''}{style}{$$props.style || ''}"
+        tab
+    >
         <span style="display: flex;align-items: center;flex: 1;overflow: hidden;">
             {#if icon || show.locked}
                 <Icon id={iconID ? iconID : show.locked ? "locked" : "noIcon"} {custom} box={iconID === "ppt" ? 50 : 24} right />
             {/if}
 
-            {#if show.quickAccess?.number}
+            {#if active === "number" && show.quickAccess?.number}
                 <span style="color: var(--secondary);font-weight: bold;margin: 3px 5px;padding-inline-end: 3px;white-space: nowrap;">{show.quickAccess.number}</span>
             {/if}
 
-            <HiddenInput value={newName} id={index !== null ? "show_" + id + "#" + index : "show_drawer_" + id} on:edit={rename} bind:edit={editActive} allowEmpty={false} allowEdit={!show.type || show.type === "show"} />
+            <HiddenInput value={newName} id={index !== null ? "show_" + id + "#" + index : "show_drawer_" + id} on:edit={rename} bind:edit={editActive} allowEmpty={false} allowEdit={(!show.type || show.type === "show") && !readOnly} />
+
+            {#if active !== "number" && show.quickAccess?.number}
+                <span style="opacity: 0.8;white-space: nowrap;">{show.quickAccess.number}</span>
+            {/if}
 
             {#if show.layoutInfo?.name}
                 <span class="layout" style="opacity: 0.6;font-style: italic;font-size: 0.9em;">{show.layoutInfo.name}</span>
             {/if}
 
-            {#if show.scheduleLength !== undefined}
+            {#if show.scheduleLength !== undefined && Number(show.scheduleLength)}
                 <span class="layout">{joinTime(secondsToTime(show.scheduleLength))}</span>
             {/if}
         </span>
@@ -187,7 +217,7 @@
         {#if data}
             <span style="opacity: 0.5;padding-inline-start: 10px;font-size: 0.9em;">{data}</span>
         {/if}
-    </Button>
+    </MaterialButton>
 </div>
 
 <style>

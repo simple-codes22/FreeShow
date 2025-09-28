@@ -1,5 +1,8 @@
 <script lang="ts">
-    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special } from "../../stores"
+    import { onMount } from "svelte"
+    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, categories, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special, templates } from "../../stores"
+    import { hasNewerUpdate, wait } from "../../utils/common"
+    import { getAccess } from "../../utils/profile"
     import { videoExtensions } from "../../values/extensions"
     import { customActionActivation } from "../actions/actions"
     import { history } from "../helpers/history"
@@ -17,6 +20,7 @@
     import Autoscroll from "../system/Autoscroll.svelte"
     import Center from "../system/Center.svelte"
     import DropArea from "../system/DropArea.svelte"
+    import { loadCustomFonts } from "../helpers/fonts"
 
     export let showId: string
     export let layout = ""
@@ -25,6 +29,11 @@
     $: currentShow = $showsCache[showId]
     $: activeLayout = layout || $showsCache[showId]?.settings?.activeLayout
     $: layoutSlides = currentShow ? getCachedShow(showId, activeLayout, $cachedShowsData)?.layout || [] : []
+
+    onMount(() => {
+        // custom fonts
+        if (currentShow?.settings?.customFonts) loadCustomFonts(currentShow.settings.customFonts)
+    })
 
     // fix broken media
     $: if (showId) fixBrokenMedia()
@@ -45,30 +54,20 @@
 
     let scrollElem: HTMLElement | undefined
     let offset = -1
-    $: {
+    $: updateOffset({ $outputs })
+    async function updateOffset(_updater: any) {
+        if (!loaded || !scrollElem) return
+        if (await hasNewerUpdate("SHOWS_SCROLL_OFFSET", 50)) return
+
         let output = $outputs[activeOutputs[0]] || {}
-        if (loaded && scrollElem && showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
-            let columns = $slidesOptions.mode === "grid" ? ($slidesOptions.columns > 2 ? $slidesOptions.columns : 0) : 1
+        if (showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
+            let columns = mode === "grid" ? ($slidesOptions.columns > 2 ? $slidesOptions.columns : 0) : 1
             let index = Math.max(0, (output.out.slide.index || 0) - columns)
-            offset = ((scrollElem.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
+            offset = ((scrollElem?.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
         }
     }
 
     let nextScrollTimeout: NodeJS.Timeout | null = null
-    function wheel({ detail }: any) {
-        let e: any = detail.event
-        if (!e.ctrlKey && !e.metaKey) return
-        if (nextScrollTimeout) return
-
-        slidesOptions.set({ ...$slidesOptions, columns: Math.max(2, Math.min(10, $slidesOptions.columns + (e.deltaY < 0 ? -1 : 1))) })
-
-        // don't start timeout if scrolling with mouse
-        if (e.deltaY >= 100 || e.deltaY <= -100) return
-        nextScrollTimeout = setTimeout(() => {
-            nextScrollTimeout = null
-        }, 500)
-    }
-
     let disableAutoScroll = false
     function slideClick(e: any, index: number) {
         // TODO: duplicate function of "preview:126 - updateOut"
@@ -153,12 +152,15 @@
     }
 
     // update show by its template
-    $: gridMode = $slidesOptions.mode === "grid" || $slidesOptions.mode === "simple" || $slidesOptions.mode === "groups"
+    $: gridMode = mode === "grid" || mode === "simple" || mode === "groups"
     $: if (showId && gridMode && !isLessons && loaded) setTimeout(updateTemplate, 100)
     function updateTemplate() {
         if (!loaded) return
 
         let showTemplate = currentShow?.settings?.template || ""
+        // get category template if no show template
+        if (!showTemplate || showTemplate === "default" || !$templates[showTemplate]) showTemplate = $categories[currentShow.category || ""]?.template || ""
+
         history({ id: "TEMPLATE", save: false, newData: { id: showTemplate }, location: { page: "show" } })
     }
 
@@ -194,15 +196,16 @@
 
         function capitalize(value: string) {
             $special.capitalize_words.split(",").forEach((word) => {
-                let newWord = word.trim().toLowerCase()
+                let newWord = word.trim()
                 if (!newWord.length) return
 
-                const regEx = new RegExp(`\\b${newWord}\\b`, "gi")
+                // match whole words, respecting Unicode letters (accented characters)
+                const regEx = new RegExp(`(?<!\\p{L})${newWord.toLowerCase()}(?!\\p{L})`, "giu")
                 value = value.replace(regEx, (match) => {
                     // always capitalize: newWord.charAt(0).toUpperCase() + newWord.slice(1)
                     // use the input case styling (meaning all uppercase/lowercase also works)
                     // but don't change anything if the text is already fully uppercase
-                    return match === match.toUpperCase() ? match : word.trim()
+                    return match === match.toUpperCase() ? match : newWord
                 })
             })
 
@@ -210,15 +213,31 @@
         }
     }
 
+    let altTimeout: NodeJS.Timeout | null = null
+    let altTemp = false
     let altKeyPressed = false
     function keydown(e: KeyboardEvent) {
+        if (!e.altKey && altTimeout) clearTimeout(altTimeout)
+
         if (e.altKey) {
-            e.preventDefault()
-            altKeyPressed = true
+            if (altTemp) return
+            altTemp = true
+            // e.preventDefault()
+
+            // only activate alt preview hide after a little time (still works instantly)
+            altTimeout = setTimeout(() => {
+                if (altTemp && document.hasFocus()) altKeyPressed = true
+            }, 300)
         }
     }
     function keyup(e) {
         if (e.altKey) return
+
+        altTemp = false
+        altKeyPressed = false
+    }
+    function blurred() {
+        altTemp = false
         altKeyPressed = false
     }
 
@@ -273,8 +292,11 @@
         })
     }
 
+    let profile = getAccess("shows")
+    $: isLocked = currentShow?.locked || profile.global === "read" || profile[currentShow?.category || ""] === "read"
+
     function createSlide() {
-        if (currentShow?.locked) return
+        if (isLocked) return
 
         history({ id: "SLIDES" })
         activePage.set("edit")
@@ -295,7 +317,7 @@
         startLazyLoader()
     }
 
-    $: isLessons = currentShow?.category === "lessons"
+    $: isLessons = currentShow?.reference?.type === "lessons"
     // let showLessonsAlert: boolean = false
     let lessonsFailed = 0
     // let currentTries: number = 0
@@ -328,6 +350,9 @@
                     let exists = await checkImage(mediaPath)
 
                     if (exists) {
+                        // it exists before it's fully downloaded
+                        if (lazyLoader > 0) await wait(1000)
+
                         lazyLoader = layoutSlides.length
                         loaded = true
                         lazyLoading = false
@@ -383,35 +408,44 @@
         if (isVideo) media = document.createElement("video")
 
         return new Promise((resolve) => {
-            if (isVideo)
-                media.onloadeddata = () => {
-                    resolve(true)
-                }
-            else media.onload = () => resolve(true)
+            let hasLoaded = false
+            if (isVideo) media.onloadeddata = onLoaded
+            else media.onload = onLoaded
+
             media.onerror = () => {
+                if (hasLoaded) return
                 resolve(false)
             }
 
             media.src = encodeFilePath(src)
+
+            function onLoaded() {
+                hasLoaded = true
+                resolve(true)
+            }
         })
     }
 
     let loading = false
     $: if (showId) startLoading()
     $: if ($notFound.show?.includes(showId)) loading = false
+    let loadingTimeout: NodeJS.Timeout | null = null
     function startLoading() {
         loading = true
-        setTimeout(() => {
+        if (loadingTimeout) clearTimeout(loadingTimeout)
+        loadingTimeout = setTimeout(() => {
             loading = false
         }, 8000)
     }
+
+    $: mode = isLessons ? "grid" : $slidesOptions.mode
 </script>
 
 <!-- TODO: tab enter not woring -->
 
-<svelte:window on:keydown={keydown} on:keyup={keyup} on:mousedown={keyup} />
+<svelte:window on:keydown={keydown} on:keyup={keyup} on:mousedown={keyup} on:blur={blurred} />
 
-<Autoscroll class={$focusMode || currentShow?.locked ? "" : "context #shows__close"} on:wheel={wheel} {offset} disabled={disableAutoScroll} bind:scrollElem style="display: flex;">
+<Autoscroll class={$focusMode || isLocked ? "" : "context #shows__close"} {offset} disabled={disableAutoScroll} bind:scrollElem style="display: flex;">
     <DropArea id="all_slides" selectChildren>
         <DropArea id="slides" hoverTimeout={0} selectChildren>
             {#if $showsCache[showId] === undefined}
@@ -423,10 +457,10 @@
                     {/if}
                 </Center>
             {:else}
-                <div class="grid">
+                <div class="grid" style={$focusMode ? "" : "padding-bottom: 60px;"}>
                     {#if layoutSlides.length}
                         {#each layoutSlides as slide, i}
-                            {#if (loaded || i < lazyLoader) && currentShow.slides?.[slide.id] && ($slidesOptions.mode === "grid" || !slide.disabled) && ($slidesOptions.mode !== "groups" || currentShow.slides[slide.id].group !== null || activeSlides[i] !== undefined)}
+                            {#if (loaded || i < lazyLoader) && currentShow.slides?.[slide.id] && (mode === "grid" || mode === "groups" || !slide.disabled) && (mode !== "groups" || currentShow.slides[slide.id].group !== null || activeSlides[i] !== undefined)}
                                 <Slide
                                     {showId}
                                     slide={currentShow.slides[slide.id]}
@@ -452,7 +486,7 @@
                         <Center absolute size={2}>
                             <span style="opacity: 0.5;"><T id="empty.slides" /></span>
                             <!-- Add slides button -->
-                            <Button disabled={currentShow?.locked} on:click={createSlide} style="font-size: initial;margin-top: 10px;" dark center>
+                            <Button disabled={isLocked} on:click={createSlide} style="font-size: initial;margin-top: 10px;" dark center>
                                 <Icon id="add" right />
                                 <T id="new.slide" />
                             </Button>

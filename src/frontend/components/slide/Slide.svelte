@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte"
+    import { onDestroy, onMount } from "svelte"
     import { Main } from "../../../types/IPC/Main"
     import type { MediaStyle } from "../../../types/Main"
     import type { Item, Media, Show, Slide, SlideData } from "../../../types/Show"
@@ -29,16 +29,19 @@
         styles,
         textEditActive
     } from "../../stores"
-    import { wait } from "../../utils/common"
+    import { triggerClickOnEnterSpace } from "../../utils/clickable"
+    import { newToast, wait } from "../../utils/common"
+    import { getAccess } from "../../utils/profile"
     import { slideHasAction } from "../actions/actions"
     import { removeTagsAndContent } from "../drawer/bible/scripture"
     import MediaLoader from "../drawer/media/MediaLoader.svelte"
     import Editbox from "../edit/editbox/Editbox.svelte"
+    import { shouldItemBeShown } from "../edit/scripts/itemHelpers"
     import { getItemText } from "../edit/scripts/textStyle"
     import { clone } from "../helpers/array"
     import { getContrast, hexToRgb, splitRgb } from "../helpers/color"
     import Icon from "../helpers/Icon.svelte"
-    import { checkMedia, getFileName, getMediaStyle, getThumbnailPath, loadThumbnail, mediaSize, splitPath } from "../helpers/media"
+    import { doesMediaExist, downloadOnlineMedia, getFileName, getMediaStyle, getThumbnailPath, loadThumbnail, mediaSize, splitPath } from "../helpers/media"
     import { getActiveOutputs, getResolution, getSlideFilter } from "../helpers/output"
     import { getGroupName } from "../helpers/show"
     import Effect from "../output/effects/Effect.svelte"
@@ -67,14 +70,17 @@
     export let disableThumbnails = false
     export let centerPreview = false
 
-    $: viewMode = $slidesOptions.mode || "grid"
+    $: isLessons = show?.reference?.type === "lessons"
+
+    $: viewMode = isLessons ? "grid" : $slidesOptions.mode || "grid"
     $: background = layoutSlide.background ? show.media[layoutSlide.background] : null
 
     let ghostBackground: Media | null = null
     let bgIndex = -1
     let isFirstGhost = false
-    // don't show ghost backgrounds if over slide 40 (because of loading/performance!)
-    $: if (!background && index < 40) {
+    // don't show ghost backgrounds if over slide 60 (because of loading/performance!)
+    // $: capped = ghostBackground && !background && index >= 60
+    $: if (!background && index < 60 && !$special.optimizedMode) {
         ghostBackground = null
         layoutSlides.forEach((a, i) => {
             if (i > index) return
@@ -131,10 +137,13 @@
         if ($checkedFiles.includes(id)) return
 
         checkedFiles.set([...$checkedFiles, id])
-        let exists = await checkMedia(path)
+        let exists = await doesMediaExist(path)
 
         // check for other potentially mathing mediaFolders
         if (!exists) {
+            newToast("error.media")
+            if ($special.autoLocateMedia === false) return
+
             let fileName = getFileName(path)
             sendMain(Main.LOCATE_MEDIA_FILE, { fileName, splittedPath: splitPath(path), folders, ref: { showId, mediaId: fileId, cloudId: checkCloud ? cloudId : "" } })
             return
@@ -164,6 +173,15 @@
     $: if (bgPath && !disableThumbnails) loadBackground()
     let thumbnailPath = ""
     async function loadBackground() {
+        if (bgPath.includes("http")) return download()
+
+        if (isLessons) {
+            thumbnailPath = getThumbnailPath(bgPath, mediaSize.slideSize)
+            // cache after it's downloaded
+            setTimeout(() => loadThumbnail(bgPath, mediaSize.slideSize), 1000)
+            return
+        }
+
         if (ghostBackground) {
             if (isFirstGhost) {
                 // create image (if not created) when it's first slide after actual background
@@ -187,13 +205,16 @@
         let newPath = await loadThumbnail(bgPath, mediaSize.slideSize)
         if (newPath) thumbnailPath = newPath
     }
+    async function download() {
+        thumbnailPath = await downloadOnlineMedia(bgPath)
+    }
 
     let mediaStyle: MediaStyle = {}
     $: if (bg?.path) mediaStyle = getMediaStyle($media[bg.path], currentStyle)
 
     $: group = slide.group
     $: if (slide.globalGroup && $groups[slide.globalGroup]) {
-        group = $groups[slide.globalGroup].default ? $dictionary.groups?.[$groups[slide.globalGroup].name] || "" : $groups[slide.globalGroup].name
+        group = slide.globalGroup === "none" ? "." : $groups[slide.globalGroup].default ? $dictionary.groups?.[$groups[slide.globalGroup].name] || "" : $groups[slide.globalGroup].name
         color = $groups[slide.globalGroup].color
         // history({ id: "UPDATE", save: false, newData: { data: group, key: "slides", keys: [layoutSlide.id], subkey: "group" }, oldData: { id: showId }, location: { page: "show", id: "show_key" } })
         // history({ id: "UPDATE", save: false, newData: { data: color, key: "slides", keys: [layoutSlide.id], subkey: "color" }, oldData: { id: showId }, location: { page: "show", id: "show_key" } })
@@ -316,6 +337,9 @@
         }, 100)
     }
 
+    let profile = getAccess("shows")
+    $: isLocked = show?.locked || profile.global === "read" || profile[show?.category || ""] === "read"
+
     // correct view order based on arranged order in Items.svelte (?.reverse())
     $: itemsList = clone(slide.items) || []
 
@@ -333,6 +357,14 @@
         console.log(`Requesting to open URL: ${url}`) // For debugging
         sendMain(Main.URL, url)
     }
+
+    $: outputId = getActiveOutputs($outputs, false, true)
+
+    let updater = 0
+    const updaterInterval = setInterval(() => {
+        if (itemsList.find((a) => a.conditions)) updater++
+    }, 3000)
+    onDestroy(() => clearInterval(updaterInterval))
 </script>
 
 <div
@@ -351,7 +383,16 @@
         <Actions {columns} {index} actions={layoutSlide.actions || {}} />
     {/if}
     <!-- content -->
-    <div class="slide context #{show.locked ? 'default' : $focusMode ? 'slideFocus' : name === null ? 'slideChild' : 'slide'}" class:disabled={layoutSlide.disabled} class:afterEnd={endIndex !== null && index > endIndex} {style} tabindex={0} on:click>
+    <div
+        class="slide context #{isLocked ? 'default' : $focusMode ? 'slideFocus' : name === null ? 'slideChild' : 'slide'}"
+        class:disabled={layoutSlide.disabled}
+        class:afterEnd={endIndex !== null && index > endIndex}
+        {style}
+        tabindex={0}
+        role="button"
+        on:click
+        on:keydown={triggerClickOnEnterSpace}
+    >
         <div class="hover overlay" />
         <!-- <DropArea id="slide" hoverTimeout={0} file> -->
         <div style="width: 100%;height: 100%;">
@@ -359,18 +400,18 @@
                 style={colorStyle}
                 id="slide"
                 data={{ index, showId }}
-                draggable={!$focusMode && !show.locked}
+                draggable={!$focusMode && !isLocked}
                 shiftRange={layoutSlides.map((_, index) => ({ index, showId }))}
                 onlyRightClickSelect={$focusMode}
-                selectable={!show.locked}
+                selectable={!isLocked}
                 trigger={list ? "column" : "row"}
             >
                 <!-- TODO: tab select on enter -->
                 {#if viewMode === "lyrics" && !noQuickEdit}
                     <!-- border-bottom: 1px dashed {color}; -->
-                    <div class="label" title={removeTagsAndContent(name || "")} style="color: {color};margin-bottom: 5px;">
+                    <div class="label" data-title={removeTagsAndContent(name || "")} style="color: {color};margin-bottom: 5px;">
                         <span style="color: var(--text);opacity: 0.85;font-size: 0.9em;">{index + 1}</span>
-                        <span class="text">{@html name === null ? "" : name || "—"}</span>
+                        <span class="text">{@html name === null ? "" : name === "." ? "" : name || "—"}</span>
                     </div>
                 {/if}
                 <Zoomed
@@ -420,7 +461,8 @@
                     <!-- text content -->
                     {#if slide.items}
                         {#each itemsList as item, i}
-                            {#if item && (viewMode !== "lyrics" || item.type === undefined || ["text", "events", "list"].includes(item.type))}
+                            {#if item && shouldItemBeShown(item, itemsList, { outputId, id: showId, slideIndex: index }, updater, true) && (viewMode !== "lyrics" || item.type === undefined || ["text", "events", "list"].includes(item.type))}
+                                <!-- && (!item.clickReveal || output?.clickRevealed) -->
                                 <!-- filter={layoutSlide.filterEnabled?.includes("foreground") ? layoutSlide.filter : ""} -->
                                 <!-- backdropFilter={layoutSlide.filterEnabled?.includes("foreground") ? layoutSlide["backdrop-filter"] : ""} -->
                                 <Textbox
@@ -440,6 +482,7 @@
                                     smallFontSize={viewMode === "lyrics" && !noQuickEdit}
                                     clickRevealed={!!output?.clickRevealed}
                                     {centerPreview}
+                                    chords={item.chords?.enabled}
                                 />
                             {/if}
                         {/each}
@@ -465,6 +508,9 @@
                         {/each}
                     {/if}
                 </Zoomed>
+
+                <!-- {#if viewMode === "grid" && capped}Max limit reached{/if} -->
+
                 {#if viewMode === "simple"}
                     <!-- WIP get any enabled output with maxLines, not just first one... -->
                     <!-- Object.values($outputs).find((a) => $styles[a.style || ""]?.lines) -->
@@ -475,10 +521,10 @@
                         </div>
                     {/if}
 
-                    <div title={name || ""} style="height: 2px;" />
+                    <div data-title={name || ""} style="height: 2px;" />
                 {:else if viewMode !== "lyrics" || noQuickEdit}
                     <!-- style="width: {resolution.width * zoom}px;" -->
-                    <div class="label" title={removeTagsAndContent(name || "")} style={$fullColors ? `background-color: ${color};color: ${getContrast(color || "")};` : `border-bottom: 2px solid ${color || "var(--primary-darkest)"};`}>
+                    <div class="label" data-title={removeTagsAndContent(name || "")} style={$fullColors ? `background-color: ${color};color: ${getContrast(color || "")};` : `border-bottom: 2px solid ${color || "var(--primary-darkest)"};`}>
                         {#if name === null && $fullColors && $activePage === "show"}
                             <!-- WIP this works fine without full colors, but is it neccesary? (UI vs UX) -->
                             <div class="childLink" style="background-color: {color};" class:full={$fullColors} />
@@ -489,16 +535,16 @@
                             </div>
                         {/if}
                         {#if slide.notes && icons}
-                            <p class="notes" title={slide.notes} on:click={openNotes}>
+                            <button class="notes" data-title={slide.notes} on:click={openNotes}>
                                 <Icon id="notes" white right />
                                 <span>{slide.notes}</span>
-                            </p>
+                            </button>
                         {/if}
 
                         <!-- <div class="label" title={name || ""} style="border-bottom: 2px solid {color};"> -->
                         <!-- font-size: 0.8em; -->
                         <span style="color: var(--text);opacity: 0.85;font-size: 0.9em;">{index + 1}</span>
-                        <span class="text">{@html name === null ? "" : name || "—"}</span>
+                        <span class="text" style={name === null ? "opacity: 0;" : ""}>{@html name === null ? "-" : name === "." ? "" : name || "—"}</span>
                         <!--HTML SHOW
                         <button class="open-in-browser-btn" title="Open slide in browser" on:click={handleOpenInBrowserClick}>
                             <Icon id="open_in_new" />
@@ -562,7 +608,7 @@
     } */
 
     .slide :global(.isSelected) {
-        outline: 5px solid var(--secondary-text) !important;
+        outline: 5px solid var(--text) !important;
     }
 
     .main.focused {
@@ -583,7 +629,7 @@
         width: 100%;
         height: 100%;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
 
         opacity: 0.25;
     }
@@ -608,7 +654,7 @@
         background-color: rgb(255 255 255 / 0.05);
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         z-index: 1;
     }
 
@@ -658,7 +704,7 @@
 
     .childLink {
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         bottom: 0;
         transform: translate(-100%, 100%);
         width: 8px;
@@ -672,7 +718,7 @@
     .lineProgress {
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         transform: translateY(-100%);
         width: 100%;
         height: 2px;
@@ -691,11 +737,12 @@
 
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         transform: translateY(-100%);
         width: 100%;
         padding: 4px 8px;
         background-color: rgb(0 0 0 / 0.5);
+        border: none;
         color: white;
         font-weight: normal;
 
@@ -708,29 +755,28 @@
 
     .label .text {
         flex-grow: 1; /* Allow text to take available space */
-        margin-right: 5px; /* Space between text and button */
+        margin-inline: 15px 5px; /* Keep existing left margin if needed | Space between text and button */
         /* width: 100%; */ /* Potentially remove or adjust this if flex-grow is used */
-        margin-left: 15px; /* Keep existing left margin if needed */
-        margin-right: 15px; /* Keep existing right margin if needed, or adjust for button */
+        margin-inline-end: 15px; /* Keep existing right margin if needed, or adjust for button */
         text-align: center;
         overflow-x: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .open-in-browser-btn {
+    /* .open-in-browser-btn {
         background: none;
         border: none;
-        color: inherit; /* Or a specific color if needed */
+        color: inherit;
         cursor: pointer;
-        padding: 0 4px; /* Adjust as needed */
-        margin-left: auto; /* Pushes it to the right if label is flex */
-        display: flex; /* To align icon nicely if needed */
+        padding: 0 4px;
+        margin-inline-start: auto;
+        display: flex;
         align-items: center;
     }
     .open-in-browser-btn:hover {
         opacity: 0.7;
-    }
+    } */
 
     hr {
         height: 100%;

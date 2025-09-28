@@ -1,13 +1,15 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
+import type { Chords } from "../../types/Show"
+import { DEFAULT_ITEM_STYLE } from "../components/edit/scripts/itemHelpers"
+import { setQuickAccessMetadata } from "../components/helpers/setShow"
 import { checkName, formatToFileName } from "../components/helpers/show"
+import { translateText } from "../utils/language"
 import type { Bible } from "./../../types/Bible"
 import { ShowObj } from "./../classes/Show"
-import { activePopup, alertMessage, dictionary, groups, scriptures, scripturesCache } from "./../stores"
+import { activePopup, alertMessage, groups, scriptures, scripturesCache } from "./../stores"
 import { setActiveScripture } from "./bible"
 import { createCategory, setTempShows } from "./importHelpers"
-import { setQuickAccessMetadata } from "../components/helpers/setShow"
-import type { Chords } from "../../types/Show"
 
 interface Song {
     title: string
@@ -44,7 +46,7 @@ export function convertOpenSong(data: any) {
             let song: any = {}
             if (content.includes("<html>")) song = HTMLtoObject(content)
             else song = XMLtoObject(content)
-            console.log(content, song)
+            // console.log(content, song)
 
             const layoutID = uid()
             let show = new ShowObj(false, categoryId, layoutID)
@@ -65,7 +67,7 @@ export function convertOpenSong(data: any) {
 
             show.slides = slides
             show.media = media
-            show.layouts = { [layoutID]: { name: get(dictionary).example?.default || "", notes: song.aka || "", slides: layout } }
+            show.layouts = { [layoutID]: { name: translateText("example.default"), notes: song.aka || "", slides: layout } }
 
             tempShows.push({ id: uid(), show })
         })
@@ -125,8 +127,8 @@ function createSlides({ lyrics, presentation, backgrounds }: Song) {
 
             const items = [
                 {
-                    style: "inset-inline-start:50px;top:120px;width:1820px;height:840px;",
-                    lines: text.map((a: any) => ({ align: "", text: [{ style: "", value: a.replace("|", "&nbsp;").replaceAll("_", "") }], chords }))
+                    style: DEFAULT_ITEM_STYLE,
+                    lines: text.map((a: any) => ({ align: "", text: [{ style: "", value: a.replace("|", "&nbsp;").replaceAll("_", "").trim() }], chords }))
                 }
             ]
 
@@ -140,7 +142,7 @@ function createSlides({ lyrics, presentation, backgrounds }: Song) {
 
             if (i > 0) return
 
-            const globalGroup = OSgroups[group.replace(/[0-9]/g, "")]
+            const globalGroup = OSgroups[group.replace(/[0-9]/g, "").trim()]
             if (get(groups)[globalGroup]) slides[id].globalGroup = globalGroup
             else slides[id].group = group
         })
@@ -234,26 +236,26 @@ function XMLtoBible(xml: string): Bible {
     const booksObj = getChildren(xmlDoc, "b")
     const books: any[] = []
 
-    ;[...booksObj].forEach((book: any, i: number) => {
-        let length = 0
-        const name = book.getAttribute("n")
-        const number = i + 1
-        const chapters: any[] = []
-        ;[...getChildren(book, "c")].forEach((chapter: any) => {
-            const chapterNumber = chapter.getAttribute("n")
-            const verses: any[] = []
-            ;[...getChildren(chapter, "v")].forEach((verse: any) => {
-                const text = verse.innerHTML
-                    .toString()
-                    .replace(/\[\d+\] /g, "") // remove [1], not [text]
-                    .trim()
-                length += text.length
-                if (text.length) verses.push({ number: verse.getAttribute("n"), text })
-            })
-            chapters.push({ number: chapterNumber, verses })
+        ;[...booksObj].forEach((book: any, i: number) => {
+            let length = 0
+            const name = book.getAttribute("n")
+            const number = i + 1
+            const chapters: any[] = []
+                ;[...getChildren(book, "c")].forEach((chapter: any) => {
+                    const chapterNumber = chapter.getAttribute("n")
+                    const verses: any[] = []
+                        ;[...getChildren(chapter, "v")].forEach((verse: any) => {
+                            const text = verse.innerHTML
+                                .toString()
+                                .replace(/\[\d+\] /g, "") // remove [1], not [text]
+                                .trim()
+                            length += text.length
+                            if (text.length) verses.push({ number: verse.getAttribute("n"), text })
+                        })
+                    chapters.push({ number: chapterNumber, verses })
+                })
+            if (length) books.push({ name, number, chapters })
         })
-        if (length) books.push({ name, number, chapters })
-    })
 
     return { name: "", metadata: { copyright: "" }, books }
 }

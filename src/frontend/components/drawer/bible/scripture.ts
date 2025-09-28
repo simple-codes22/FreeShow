@@ -157,11 +157,37 @@ export function joinRange(array: string[]) {
     let prev = -1
     let range = ""
 
+    // sort in correct order (should not be, but can be mixed up: ["10", "9", "8_b", 8, "8_a", "7"])
+    array = array.sort((a, b) => {
+        const sa = String(a)
+        const sb = String(b)
+
+        // Run match and safely handle null
+        const matchA = sa.match(/^(\d+)(?:_(.+))?$/) || []
+        const matchB = sb.match(/^(\d+)(?:_(.+))?$/) || []
+
+        const numA = Number(matchA[1] || 0)
+        const suffixA = matchA[2] || ""
+
+        const numB = Number(matchB[1] || 0)
+        const suffixB = matchB[2] || ""
+
+        // Compare numeric part first
+        if (numA !== numB) return numA - numB
+
+        // Then compare suffixes alphabetically (empty suffix first)
+        if (suffixA === "" && suffixB !== "") return -1
+        if (suffixA !== "" && suffixB === "") return 1
+        return suffixA.localeCompare(suffixB)
+    })
+
     array.forEach((a: string, i: number) => {
         const splitted = a.toString().split("_")
         const id = splitted[0]
         const subverse = Number(splitted[1] || 0)
         const v = id + (subverse ? getVersePartLetter(subverse) : "")
+
+        if (Number(id) === prev) return
 
         if (Number(id) - 1 === prev) {
             if (i + 1 === array.length) range += "-" + v
@@ -251,7 +277,7 @@ export function getSlides({ bibles, sorted }, onlyOne = false, disableReference 
 
     bibles.forEach((bible, bibleIndex) => {
         const currentTemplate = templateTextItems[bibleIndex] || templateTextItems[0]
-        const itemStyle = currentTemplate?.style || "top: 150px;inset-inline-start: 50px;width: 1820px;height: 780px;"
+        const itemStyle = currentTemplate?.style || "top: 150px;left: 50px;width: 1820px;height: 780px;"
         const itemAlignStyle = currentTemplate?.align || ""
         const alignStyle = currentTemplate?.lines?.[1]?.align || currentTemplate?.lines?.[0]?.align || "text-align: start;"
         const textStyle = currentTemplate?.lines?.[1]?.text?.[0]?.style || currentTemplate?.lines?.[0]?.text?.[0]?.style || "font-size: 80px;"
@@ -457,7 +483,7 @@ export function getSlides({ bibles, sorted }, onlyOne = false, disableReference 
             } else {
                 slides[slideIndex].push({
                     lines,
-                    style: metaTemplate?.style || "top: 910px;inset-inline-start: 50px;width: 1820px;height: 150px;opacity: 0.8;",
+                    style: metaTemplate?.style || "top: 910px;left: 50px;width: 1820px;height: 150px;opacity: 0.8;",
                     specialStyle: metaTemplate?.specialStyle || {},
                     actions: metaTemplate?.actions || {}
                 })
@@ -468,7 +494,7 @@ export function getSlides({ bibles, sorted }, onlyOne = false, disableReference 
 
 export function formatBibleText(text: string | undefined) {
     if (!text) return ""
-    return stripMarkdown(text).replaceAll("/ ", " ").replaceAll("*", "")
+    return stripMarkdown(text).replaceAll("/ ", " ").replaceAll("*", "").replaceAll("&amp;", '&')
 }
 
 function removeTags(text) {

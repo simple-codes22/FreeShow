@@ -31,7 +31,7 @@
         {#if effect[action.id]}
             <div>
                 <div class="button white">
-                    <Button style="padding: 3px;" redHover title="{$dictionary.actions?.remove}: {action.title}" {zoom} on:click={() => changeAction(action.id)}>
+                    <Button style="padding: 3px;" redHover data-title="{$dictionary.actions?.remove}: {action.title}" {zoom} on:click={() => changeAction(action.id)}>
                         <Icon id={action.icon} size={0.9} white />
                     </Button>
                 </div>
@@ -49,7 +49,7 @@
         display: flex;
         flex-direction: column;
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         /* right: 2px; */
         z-index: 1;
         font-size: 0.9em;

@@ -1,9 +1,14 @@
 <script lang="ts">
     import type { Item } from "../../../../types/Show"
-    import { activeEdit, activeShow, openToolsTab, os, outputs, showsCache, variables } from "../../../stores"
+    import { activeEdit, activeShow, openToolsTab, os, outputs, showsCache, special, variables } from "../../../stores"
+    import { translateText } from "../../../utils/language"
+    import { getAccess } from "../../../utils/profile"
     import { deleteAction } from "../../helpers/clipboard"
+    import { history } from "../../helpers/history"
+    import { getFileName, getMediaType } from "../../helpers/media"
     import { getActiveOutputs, getOutputResolution, percentageStylePos } from "../../helpers/output"
     import { getNumberVariables } from "../../helpers/showActions"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
     import SlideItems from "../../slide/SlideItems.svelte"
     import EditboxLines from "./EditboxLines.svelte"
     import EditboxPlain from "./EditboxPlain.svelte"
@@ -40,7 +45,7 @@
                 return ae
             }
 
-            if (e.ctrlKey || e.metaKey) {
+            if (e.shiftKey) {
                 if (ae.items.includes(index)) {
                     if (e.target.closest(".line")) ae.items.splice(ae.items.indexOf(index), 1)
                 } else {
@@ -130,12 +135,40 @@
         return style
     }
 
+    // check if media fills entire slide, if it does it might be intended as a background
+    $: if (item.type === "media") checkMedia()
+    else mediaShouldBeBackground = false
+    let mediaShouldBeBackground = false
+    function checkMedia() {
+        // WIP return if background exists
+        if (!item.src || (ref?.type || "show") !== "show" || !item.style.includes("width:1920") || !item.style.includes("height:1080")) {
+            mediaShouldBeBackground = false
+            return
+        }
+
+        mediaShouldBeBackground = true
+    }
+    function convertToBackground() {
+        if (!item.src) return
+
+        history({
+            id: "showMedia",
+            newData: { name: getFileName(item.src), path: item.src, type: getMediaType(item.src) },
+            location: { page: "show", show: { id: active || "" }, layout: $showsCache[active || ""]?.settings?.activeLayout, layoutSlide: $activeEdit.slide ?? -1 }
+        })
+
+        deleteAction({ id: "item", data: { layout, slideId: ref.id } })
+    }
+
     $: isDisabledVariable = item.type === "variable" && $variables[item.variable?.id]?.enabled === false
     // SHOW IS LOCKED FOR EDITING
-    $: isLocked = (ref.type || "show") !== "show" ? false : $showsCache[active || ""]?.locked
+    let profile = getAccess("shows")
+    $: isLocked = (ref.type || "show") !== "show" ? false : $showsCache[active || ""]?.locked || profile.global === "read" || profile[$showsCache[active || ""]?.category || ""] === "read"
 
     // give CSS access to number variable values
     $: cssVariables = getNumberVariables($variables)
+
+    $: isOptimized = $special.optimizedMode
 </script>
 
 <!-- on:mouseup={() => chordUp({ showRef: ref, itemIndex: index, item })} -->
@@ -149,8 +182,10 @@ bind:offsetWidth={width} -->
     bind:this={itemElem}
     class={plain ? "editItem" : `editItem item ${isLocked ? "" : "context #edit_box"}`}
     class:selected={$activeEdit.items.includes(index)}
+    class:decoration={item.decoration}
     class:isDisabledVariable
     class:chords={chordsMode}
+    class:isOptimized
     style="{plain
         ? 'width: 100%;'
         : `${getCustomStyle(item.style || '', customOutputId)}; outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);z-index: ${index + 1 + ($activeEdit.items.includes(index) ? 100 : 0)};${filter ? 'filter: ' + filter + ';' : ''}${
@@ -167,11 +202,19 @@ bind:offsetWidth={width} -->
     {:else}
         <SlideItems {item} {ratio} {ref} {itemElem} slideIndex={$activeEdit.slide || 0} edit />
     {/if}
+
+    {#if mediaShouldBeBackground}
+        <div class="tip">
+            {translateText("edit.media_item_tip")}
+            <MaterialButton style="color: var(--secondary);" on:click={convertToBackground}>{translateText("edit.convert_to_background")}</MaterialButton>
+        </div>
+    {/if}
 </div>
 
 <style>
     .item {
         outline: 5px solid rgb(255 255 255 / 0.2);
+        outline-offset: 0;
         transition: background-color 0.3s;
         /* cursor: text; */
 
@@ -198,5 +241,24 @@ bind:offsetWidth={width} -->
         /* .item:hover > .edit { */
         background-color: rgb(255 255 255 / 0.05);
         backdrop-filter: blur(20px);
+    }
+
+    .item.decoration:not(.selected) {
+        pointer-events: none;
+        outline: none !important;
+    }
+
+    .tip {
+        position: absolute;
+        top: 0;
+        left: 0;
+
+        background-color: rgb(0 0 0 / 0.5);
+        padding: 12px;
+
+        font-family: unset;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 0.32em;
+        text-shadow: none;
     }
 </style>

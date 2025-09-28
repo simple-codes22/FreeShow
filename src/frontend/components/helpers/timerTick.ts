@@ -1,18 +1,18 @@
 import { get } from "svelte/store"
 import type { Event } from "../../../types/Calendar"
-import { OUTPUT, STAGE } from "../../../types/Channels"
+import { STAGE } from "../../../types/Channels"
 import { activeTimers, currentWindow, dictionary, events, nextActionEventPaused, nextActionEventStart, timers } from "../../stores"
 import { newToast } from "../../utils/common"
-import { translate } from "../../utils/language"
+import { translateText } from "../../utils/language"
 import { send } from "../../utils/request"
 import { actionData } from "../actions/actionData"
 import { customActionActivation, runAction } from "../actions/actions"
-import { clone, keysToID, sortByTime } from "./array"
-import { loadShows } from "./setShow"
-import { checkNextAfterMedia } from "./showActions"
 import { sortByClosestMatch } from "../actions/apiHelper"
 import { getCurrentTimerValue, playPauseGlobal } from "../drawer/timers/timers"
 import { getDynamicValue } from "../edit/scripts/itemHelpers"
+import { clone, keysToID, sortByTime } from "./array"
+import { loadShows } from "./setShow"
+import { checkNextAfterMedia } from "./showActions"
 
 const INTERVAL = 1000
 const TEN_SECONDS = 1000 * 10
@@ -28,7 +28,7 @@ export function startTimer() {
     timeout = setTimeout(() => {
         const newActiveTimers = clone(get(activeTimers)).map(increment)
 
-        send(OUTPUT, ["ACTIVE_TIMERS"], newActiveTimers)
+        // send(OUTPUT, ["ACTIVE_TIMERS"], newActiveTimers)
         send(STAGE, ["ACTIVE_TIMERS"], newActiveTimers)
         activeTimers.set(newActiveTimers)
 
@@ -62,13 +62,13 @@ export function stopTimers() {
     }, 50)
 }
 
-function increment(timer: { id: string; start: number; end: number; [key: string]: any }, i: number) {
+function increment(timer: { id: string; start: number; end: number;[key: string]: any }, i: number) {
     if (!timer.paused && (timer.start < timer.end ? timer.currentTime >= timer.end && timer.currentTime < timer.end + 1 : timer.currentTime <= timer.end && timer.currentTime > timer.end - 1)) {
         if (!timer.overflow) timer.paused = true
 
         // ended
         checkNextAfterMedia(timer.id, "timer")
-        customActionActivation(`timer_end___` + timer.id)
+        customActionActivation("timer_end", timer.id)
     }
 
     if ((timer.currentTime === timer.end && !timer.overflow) || timer.paused) return timer
@@ -145,7 +145,7 @@ export function startEventTimer() {
             if (get(nextActionEventPaused)) return
 
             const actionId = event.action.id
-            const actionName = translate(actionData[actionId]?.name)
+            const actionName = translateText(actionData[actionId]?.name)
 
             const timeLeft: number = eventTime.getTime() - currentTime.getTime()
             if (i === 0) nextActionEventStart.set({ name: actionName, timeLeft })
@@ -199,7 +199,7 @@ export function checkTimers() {
 
         if (time < 0 && time >= -1) {
             checkNextAfterMedia(id, "timer")
-            customActionActivation(`timer_end___` + id)
+            customActionActivation("timer_end", id)
         }
     })
 

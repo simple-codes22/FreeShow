@@ -3,11 +3,12 @@ import { Main } from "../../types/IPC/Main"
 import type { Output } from "../../types/Output"
 import type { Themes } from "../../types/Settings"
 import { clone, keysToID } from "../components/helpers/array"
-import { checkWindowCapture, displayOutputs, setOutput } from "../components/helpers/output"
+import { checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
 import { defaultThemes } from "../components/settings/tabs/defaultThemes"
 import { sendMain } from "../IPC/main"
 import {
     actionTags,
+    actions,
     activePopup,
     activeProject,
     alertUpdates,
@@ -18,8 +19,8 @@ import {
     autosave,
     calendarAddShow,
     categories,
-    companion,
     chumsSyncCategories,
+    companion,
     customMetadata,
     customizedIcons,
     dataPath,
@@ -28,6 +29,7 @@ import {
     drawer,
     drawerTabsData,
     driveData,
+    effects,
     effectsLibrary,
     emitters,
     formatNewShow,
@@ -45,13 +47,14 @@ import {
     mediaOptions,
     mediaTags,
     metronome,
-    actions,
     openedFolders,
+    os,
     outLocked,
     overlayCategories,
     overlays,
     playerVideos,
     ports,
+    profiles,
     projectView,
     remotePassword,
     resized,
@@ -73,8 +76,7 @@ import {
     version,
     videoMarkers,
     videosData,
-    videosTime,
-    effects
+    videosTime
 } from "../stores"
 import { OUTPUT } from "./../../types/Channels"
 import type { SaveListSettings, SaveListSyncedSettings } from "./../../types/Save"
@@ -106,32 +108,12 @@ export function updateSettings(data: any) {
 
     // output
     if (data.outputs) {
-        const outputsList: (Output & { id: string })[] = keysToID(data.outputs)
-
-        // get active "ghost" key outputs
-        const activeKeyOutputs: string[] = []
-        outputsList.forEach((output) => {
-            if (output.keyOutput && !output.isKeyOutput) activeKeyOutputs.push(output.id)
-        })
-
-        // remove "ghost" key outputs (they were not removed in versions pre 0.9.6)
-        const allOutputs = get(outputs)
-        let outputsUpdated = false
-        Object.keys(allOutputs).forEach((outputId) => {
-            const output = allOutputs[outputId]
-            if (!output.isKeyOutput || activeKeyOutputs.includes(outputId)) return
-
-            delete allOutputs[outputId]
-            outputsUpdated = true
-        })
-        if (outputsUpdated) outputs.set(allOutputs)
-
         // wait until content is loaded
         setTimeout(() => {
             restartOutputs()
-            if (get(autoOutput)) setTimeout(() => displayOutputs({}, true), 500)
-            setTimeout(() => checkWindowCapture(true), 1000)
-        }, 1500)
+            if (get(autoOutput)) setTimeout(() => toggleOutputs(null, { autoStartup: true }), get(os).platform === "darwin" ? 1500 : 500)
+            setTimeout(() => checkWindowCapture(true), get(os).platform === "darwin" ? 2000 : 1000)
+        }, get(os).platform === "darwin" ? 2500 : 1500)
     }
 
     // remote
@@ -142,12 +124,15 @@ export function updateSettings(data: any) {
     sendMain(Main.START, { ports: customPorts, max: data.maxConnections === undefined ? 10 : data.maxConnections, disabled, data: get(serverData) })
 
     // theme
-    const currentTheme = get(themes)[data.theme]
+    let currentTheme = get(themes)[data.theme]
     if (currentTheme) {
-        // update colors (upgrading from < v0.9.2)
-        if (data.theme === "default" && currentTheme.colors.secondary?.toLowerCase() === "#e6349c") {
+        // update colors (pre 0.9.2 or 1.4.9)
+        const pre092 = currentTheme.colors.secondary?.toLowerCase() === "#e6349c"
+        const pre149 = currentTheme.colors.primary?.toLowerCase() === "#292c36"
+        if (data.theme === "default" && (pre092 || pre149)) {
             themes.update((a) => {
                 a.default = clone(defaultThemes.default)
+                currentTheme = a.default
                 return a
             })
         }
@@ -174,12 +159,6 @@ export function restartOutputs(specificId = "") {
     outputIds.forEach((id: string) => {
         let output: Output = get(outputs)[id]
         if (!output) return
-
-        // key output styling
-        if (output.isKeyOutput) {
-            const parentOutput = allOutputs.find((a) => a.keyOutput === id)
-            if (parentOutput) output = { ...parentOutput, ...output, id }
-        }
 
         // , rate: get(special).previewRate || "auto"
         send(OUTPUT, ["CREATE"], { ...output, id })
@@ -269,6 +248,7 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     },
     sorted: (v: any) => sorted.set(v),
     styles: (v: any) => styles.set(v),
+    profiles: (v: any) => profiles.set(v),
     remotePassword: (v: any) => remotePassword.set(v),
     audioFolders: (v: any) => audioFolders.set(v),
     categories: (v: any) => categories.set(v),

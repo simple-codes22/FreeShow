@@ -1,6 +1,6 @@
 import type { SaveListSettings, SaveListSyncedSettings } from "../../types/Save"
 
-export const defaultConfig = { loaded: false, maximized: true, bounds: { width: 800, height: 600, x: 0, y: 0 }, disableHardwareAcceleration: true }
+export const defaultConfig = { loaded: false, maximized: true, bounds: { width: 800, height: 600, x: 0, y: 0 }, disableHardwareAcceleration: null }
 
 export const defaultGroups = {
     break: { name: "break", default: true, color: "#f5255e" },
@@ -29,7 +29,6 @@ export const defaultSettings: { [key in SaveListSettings]: any } = {
         }
     },
     sorted: {},
-    styles: {},
     openedFolders: ["default"],
     activeProject: null,
     alertUpdates: true,
@@ -93,6 +92,8 @@ export const defaultSyncedSettings: { [key in SaveListSyncedSettings]: any } = {
         presentation: { name: "category.presentation", icon: "presentation", default: true },
         scripture: { name: "category.scripture", icon: "scripture", default: true }
     },
+    styles: {},
+    profiles: {},
     timers: {
         default: { name: "05:00", type: "counter", start: 300, end: 0 }
     },

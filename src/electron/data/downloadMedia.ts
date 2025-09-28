@@ -4,10 +4,11 @@ import path from "path"
 import { ToMain } from "../../types/IPC/ToMain"
 import type { LessonFile, LessonsData } from "../../types/Main"
 import { sendToMain } from "../IPC/main"
-import { dataFolderNames, doesPathExist, getDataFolder, makeDir } from "../utils/files"
+import { createFolder, dataFolderNames, doesPathExist, getDataFolder, getValidFileName, makeDir } from "../utils/files"
 import { waitUntilValueIsDefined } from "../utils/helpers"
+import { filePathHashCode } from "./thumbnails"
 
-export function downloadMedia(lessons: LessonsData[]) {
+export function downloadLessonsMedia(lessons: LessonsData[]) {
     const replace = lessons.map(checkLesson)
 
     sendToMain(ToMain.REPLACE_MEDIA_PATHS, replace.flat())
@@ -21,7 +22,7 @@ function checkLesson(lesson: LessonsData) {
     sendToMain(ToMain.LESSONS_DONE, { showId: lesson.showId, status: { finished: 0, failed: 0 } })
 
     const lessonsFolder = getDataFolder(lesson.path, dataFolderNames[type])
-    const lessonFolder = path.join(lessonsFolder, lesson.name)
+    const lessonFolder = path.join(lessonsFolder, getValidFileName(lesson.name))
     makeDir(lessonFolder)
 
     return lesson.files
@@ -123,25 +124,26 @@ async function initDownload() {
 let downloadCount = 0
 let failedDownloads = 0
 let errorCount = 0
-function startDownload(downloading: DownloadFile) {
+function startDownload(data: DownloadFile) {
     // download the media
-    const file = downloading.file
+    const file = data.file
     const url = file.url
 
     if (!url) return next()
 
-    const fileStream = fs.createWriteStream(downloading.path)
+    makeDir(path.dirname(data.path))
+    const fileStream = fs.createWriteStream(data.path)
     console.info(`Downloading lessons media: ${file.name}`)
     console.info(url)
     https
         .get(url, (res) => {
             if (res.statusCode !== 200) {
                 fileStream.close()
-                fs.unlink(downloading.path, (err) => console.error(err))
+                fs.unlink(data.path, (err) => console.error(err))
 
                 console.error(`Failed to download file, status code: ${String(res.statusCode)}`)
                 failedDownloads++
-                sendToMain(ToMain.LESSONS_DONE, { showId: downloading.showId, status: { finished: downloadCount, failed: failedDownloads } })
+                sendToMain(ToMain.LESSONS_DONE, { showId: data.showId, status: { finished: downloadCount, failed: failedDownloads } })
 
                 next()
                 return
@@ -157,7 +159,7 @@ function startDownload(downloading: DownloadFile) {
             })
 
             fileStream.on("error", (err1) => {
-                fs.unlink(downloading.path, (err2) => console.error(err2))
+                fs.unlink(data.path, (err2) => console.error(err2))
                 console.error(`File error: ${err1.message}`)
 
                 retry()
@@ -167,7 +169,7 @@ function startDownload(downloading: DownloadFile) {
                 fileStream.close()
                 downloadCount++
                 console.error(`Finished downloading file: ${file.name}`)
-                sendToMain(ToMain.LESSONS_DONE, { showId: downloading.showId, status: { finished: downloadCount, failed: failedDownloads } })
+                sendToMain(ToMain.LESSONS_DONE, { showId: data.showId, status: { finished: downloadCount, failed: failedDownloads } })
 
                 next()
             })
@@ -188,14 +190,14 @@ function startDownload(downloading: DownloadFile) {
     function retry() {
         if (errorCount > 5) {
             failedDownloads++
-            sendToMain(ToMain.LESSONS_DONE, { showId: downloading.showId, status: { finished: downloadCount, failed: failedDownloads } })
+            sendToMain(ToMain.LESSONS_DONE, { showId: data.showId, status: { finished: downloadCount, failed: failedDownloads } })
 
             next()
             return
         }
         errorCount++
 
-        addToDownloadQueue(downloading)
+        addToDownloadQueue(data)
         next()
     }
 
@@ -207,4 +209,88 @@ function startDownload(downloading: DownloadFile) {
         },
         60 * 8 * 1000
     ) // 8 minutes timeout
+}
+
+/// //
+
+const downloading: string[] = []
+export function downloadMedia({ url, dataPath }: { url: string; dataPath: string }) {
+    if (!url?.includes("http")) return
+
+    if (downloading.includes(url)) return
+    downloading.push(url)
+
+    const extension = path.extname(url)
+    const fileName = `${filePathHashCode(url)}${extension}`
+    const outputFolder = getDataFolder(dataPath, dataFolderNames.onlineMedia)
+    const outputPath = path.join(outputFolder, fileName)
+    createFolder(outputFolder)
+
+    const fileStream = fs.createWriteStream(outputPath)
+    https
+        .get(url, (res) => {
+            if (res.statusCode !== 200) {
+                fileStream.close()
+                fs.unlink(outputPath, (err) => console.error(err))
+
+                console.error(`Failed to download file, status code: ${String(res.statusCode)}`)
+                return
+            }
+
+            res.pipe(fileStream)
+
+            res.on("error", (err) => {
+                fileStream.close()
+                console.error(`Response error: ${err.message}`)
+
+                retry()
+            })
+
+            fileStream.on("error", (err1) => {
+                fs.unlink(outputPath, (err2) => console.error(err2))
+                console.error(`File error: ${err1.message}`)
+
+                retry()
+            })
+
+            fileStream.on("finish", () => {
+                fileStream.close()
+                downloadCount++
+                console.error(`Finished downloading file: ${url}`)
+            })
+        })
+        .on("error", (err) => {
+            fileStream.close()
+            console.error(`Request error: ${err.message}`)
+
+            retry()
+        })
+
+    let errorCount2 = 0
+    function retry() {
+        if (errorCount2 > 5) {
+            return
+        }
+        errorCount2++
+    }
+
+    // const timeout = setTimeout(
+    //     () => {
+    //         fileStream.close()
+    //         console.error(`File timed out: ${url}`)
+    //     },
+    //     60 * 8 * 1000
+    // ) // 8 minutes timeout
+}
+
+export function checkIfMediaDownloaded({ url, dataPath }: { url: string; dataPath: string }) {
+    if (!url?.includes("http")) return null
+
+    const extension = path.extname(url)
+    const fileName = `${filePathHashCode(url)}${extension}`
+    const outputFolder = getDataFolder(dataPath, dataFolderNames.onlineMedia)
+    const outputPath = path.join(outputFolder, fileName)
+
+    if (!doesPathExist(outputPath)) return null
+    return outputPath
 }

@@ -1,6 +1,7 @@
 import { get } from "svelte/store"
 import type { Media } from "../../../types/Show"
 import {
+    actions,
     actionTags,
     activeActionTagFilter,
     activeEdit,
@@ -13,7 +14,6 @@ import {
     groups,
     media,
     mediaTags,
-    actions,
     outputs,
     overlays,
     selected,
@@ -22,7 +22,7 @@ import {
     variables,
     variableTags
 } from "../../stores"
-import { translate } from "../../utils/language"
+import { translateText } from "../../utils/language"
 import { drawerTabs } from "../../values/tabs"
 import { actionData } from "../actions/actionData"
 import { getActionName, getActionTriggerId } from "../actions/actions"
@@ -41,7 +41,7 @@ const loadActions = {
         const tabs = keysToID(clone(drawerTabs)).slice(tabsToRemove)
         items = tabs.map((a) => {
             const enabled = get(drawerTabsData)[a.id]?.enabled !== false
-            return { id: a.id, label: a.name, icon: a.icon, enabled }
+            return { id: a.id, label: a.name, icon: a.icon, iconColor: "var(--secondary)", enabled }
         })
 
         return items
@@ -50,9 +50,9 @@ const loadActions = {
     // TAGS
     tag_set: () => {
         const selectedShowTags = get(shows)[get(selected).data[0]?.id]?.quickAccess?.tags || []
-        const sortedTags: (ContextMenuItem | "SEPERATOR")[] = sortObject(sortByName(keysToID(get(globalTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedShowTags.includes(a.id), translate: false }))
-        const create = { label: "popup.manage_tags", icon: "edit", id: "create" }
-        if (sortedTags.length) sortedTags.push("SEPERATOR")
+        const sortedTags: (ContextMenuItem | "SEPARATOR")[] = sortObject(sortByName(keysToID(get(globalTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedShowTags.includes(a.id), translate: false }))
+        const create = { label: "popup.manage_tags", icon: "edit", iconColor: "#97c7ff", id: "create" }
+        if (sortedTags.length) sortedTags.push("SEPARATOR")
         sortedTags.push(create)
         return sortedTags
     },
@@ -63,9 +63,9 @@ const loadActions = {
     },
     media_tag_set: () => {
         const selectedTags = get(media)[get(selected).data[0]?.path]?.tags || []
-        const sortedTags: (ContextMenuItem | "SEPERATOR")[] = sortObject(sortByName(keysToID(get(mediaTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
-        const create = { label: "popup.manage_tags", icon: "edit", id: "create" }
-        if (sortedTags.length) sortedTags.push("SEPERATOR")
+        const sortedTags: (ContextMenuItem | "SEPARATOR")[] = sortObject(sortByName(keysToID(get(mediaTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
+        const create = { label: "popup.manage_tags", icon: "edit", iconColor: "#97c7ff", id: "create" }
+        if (sortedTags.length) sortedTags.push("SEPARATOR")
         sortedTags.push(create)
         return sortedTags
     },
@@ -76,9 +76,9 @@ const loadActions = {
     },
     action_tag_set: () => {
         const selectedTags = get(actions)[get(selected).data[0]?.id]?.tags || []
-        const sortedTags: (ContextMenuItem | "SEPERATOR")[] = sortObject(sortByName(keysToID(get(actionTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
-        const create = { label: "popup.manage_tags", icon: "edit", id: "create" }
-        if (sortedTags.length) sortedTags.push("SEPERATOR")
+        const sortedTags: (ContextMenuItem | "SEPARATOR")[] = sortObject(sortByName(keysToID(get(actionTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
+        const create = { label: "popup.manage_tags", icon: "edit", iconColor: "#97c7ff", id: "create" }
+        if (sortedTags.length) sortedTags.push("SEPARATOR")
         sortedTags.push(create)
         return sortedTags
     },
@@ -90,9 +90,9 @@ const loadActions = {
     },
     variable_tag_set: () => {
         const selectedTags = get(variables)[get(selected).data[0]?.id]?.tags || []
-        const sortedTags: (ContextMenuItem | "SEPERATOR")[] = sortObject(sortByName(keysToID(get(variableTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
-        const create = { label: "popup.manage_tags", icon: "edit", id: "create" }
-        if (sortedTags.length) sortedTags.push("SEPERATOR")
+        const sortedTags: (ContextMenuItem | "SEPARATOR")[] = sortObject(sortByName(keysToID(get(variableTags))), "color").map((a) => ({ ...a, label: a.name, enabled: selectedTags.includes(a.id), translate: false }))
+        const create = { label: "popup.manage_tags", icon: "edit", iconColor: "#97c7ff", id: "create" }
+        if (sortedTags.length) sortedTags.push("SEPARATOR")
         sortedTags.push(create)
         return sortedTags
     },
@@ -113,6 +113,9 @@ const loadActions = {
         if (!currentSlide) return []
 
         const currentGroup: string = currentSlide.globalGroup || ""
+        const noGroup = currentSlide.group === "." || currentGroup === "none"
+        const isParent = slideRef.type === "parent"
+
         items = Object.entries(get(groups)).map(([id, a]) => {
             // strange bug, where name is { "isTrusted": true }, maybe an old issue
             // https://www.reddit.com/r/freeshowapp/comments/1j0w6mt/freeshow_keeps_on_freezing
@@ -120,24 +123,25 @@ const loadActions = {
             return { id, color: a.color, label: a.default ? "groups." + a.name : a.name, translate: !!a.default, enabled: id === currentGroup }
         })
 
-        if (!items.length) return [{ label: "empty.general", disabled: true }]
-        return sortItemsByLabel(items)
+        if (!isParent && !items.length) return [{ label: "empty.general", disabled: true }]
+        // , icon: "remove"
+        return [...(isParent ? [{ id: "none", label: "main.none", enabled: noGroup, style: "opacity: 0.8;" }] : []), ...sortItemsByLabel(items)]
     },
     actions: () => {
         const slideRef = getLayoutRef()?.[get(selected).data[0]?.index]
         const currentActions = slideRef?.data?.actions
 
         const slideActions = [
-            { id: "action", label: "midi.start_action", icon: "actions" },
-            "SEPERATOR",
-            { id: "slide_shortcut", label: "actions.play_with_shortcut", icon: "play", enabled: currentActions?.slide_shortcut || false },
-            { id: "receiveMidi", label: "actions.play_on_midi", icon: "play", enabled: currentActions?.receiveMidi || false },
-            "SEPERATOR",
-            { id: "nextTimer", label: "preview.nextTimer", icon: "clock", enabled: Number(slideRef?.data?.nextTimer || 0) || false },
-            { id: "loop", label: "preview.to_start", icon: "restart", enabled: slideRef?.data?.end || false },
-            { id: "nextAfterMedia", label: "actions.next_after_media", icon: "forward", enabled: currentActions?.nextAfterMedia || false },
-            "SEPERATOR",
-            { id: "animate", label: "popup.animate", icon: "stars", enabled: currentActions?.animate || false }
+            { id: "action", label: "midi.start_action", icon: "actions", iconColor: "#d497ff" },
+            "SEPARATOR",
+            { id: "slide_shortcut", label: "actions.play_with_shortcut", icon: "play", iconColor: "#7d81ff", enabled: currentActions?.slide_shortcut || false },
+            { id: "receiveMidi", label: "actions.play_on_midi", icon: "play", iconColor: "#7d81ff", enabled: currentActions?.receiveMidi || false },
+            "SEPARATOR",
+            { id: "nextTimer", label: "preview.nextTimer", icon: "clock", iconColor: "#fca4ff", enabled: Number(slideRef?.data?.nextTimer || 0) || false },
+            { id: "loop", label: "preview.to_start", icon: "restart", iconColor: "#fca4ff", enabled: slideRef?.data?.end || false },
+            { id: "nextAfterMedia", label: "actions.next_after_media", iconColor: "#fca4ff", icon: "forward", enabled: currentActions?.nextAfterMedia || false },
+            "SEPARATOR",
+            { id: "animate", label: "popup.animate", icon: "stars", iconColor: "#fff1ad", enabled: currentActions?.animate || false }
         ]
 
         return slideActions
@@ -152,15 +156,15 @@ const loadActions = {
 
         const itemActions: any[] = []
         if (get(activeEdit).type !== "overlay") {
-            itemActions.push({ id: "clickReveal", label: "actions.click_reveal", icon: "click_action", enabled: !!currentItem?.clickReveal })
-            if (currentItem?.type === "text" || currentItem?.lines) itemActions.push({ id: "lineReveal", label: "actions.line_reveal", icon: "line_reveal", enabled: !!currentItem?.lineReveal })
+            itemActions.push({ id: "clickReveal", label: "actions.click_reveal", icon: "click_action", iconColor: "#d4a3f6", enabled: !!currentItem?.clickReveal })
+            if (currentItem?.type === "text" || currentItem?.lines) itemActions.push({ id: "lineReveal", label: "actions.line_reveal", icon: "line_reveal", iconColor: "#d4a3f6", enabled: !!currentItem?.lineReveal })
         }
 
         itemActions.push(
             ...[
                 // { id: "transition", label: "popup.transition", icon: "transition", enabled: !!currentItemActions.transition },
-                { id: "showTimer", label: "actions.show_timer", icon: "time_in", enabled: Number(currentItemActions.showTimer || 0) || false },
-                { id: "hideTimer", label: "actions.hide_timer", icon: "time_out", enabled: Number(currentItemActions.hideTimer || 0) || false }
+                { id: "showTimer", label: "actions.show_timer", icon: "time_in", iconColor: "#cd86ff", enabled: Number(currentItemActions.showTimer || 0) || false },
+                { id: "hideTimer", label: "actions.hide_timer", icon: "time_out", iconColor: "#cd86ff", enabled: Number(currentItemActions.hideTimer || 0) || false }
             ]
         )
 
@@ -181,7 +185,7 @@ const loadActions = {
         if (!data) return []
 
         const showMedia: { [key: string]: Media } = _show().get().media
-        const mediaList: (ContextMenuItem | "SEPERATOR")[] = []
+        const mediaList: (ContextMenuItem | "SEPARATOR")[] = []
 
         // get background
         const bg = data.background
@@ -197,7 +201,7 @@ const loadActions = {
         // get overlays
         const ol = data.overlays || []
         if (ol.length) {
-            if (mediaList.length) mediaList.push("SEPERATOR")
+            if (mediaList.length) mediaList.push("SEPARATOR")
             mediaList.push(
                 ...sortByName(
                     ol.map((id: string) => ({ id, label: get(overlays)[id]?.name, translate: false, icon: "overlays" })),
@@ -209,7 +213,7 @@ const loadActions = {
         // get audio
         const audio = data.audio || []
         if (audio.length) {
-            if (mediaList.length) mediaList.push("SEPERATOR")
+            if (mediaList.length) mediaList.push("SEPARATOR")
             const audioItems = sortByName(
                 audio.map((id: string) => {
                     const name = showMedia[id]?.name || ""
@@ -228,7 +232,7 @@ const loadActions = {
         // get mics
         const mics = data.mics || []
         if (mics.length) {
-            if (mediaList.length) mediaList.push("SEPERATOR")
+            if (mediaList.length) mediaList.push("SEPARATOR")
             const micItems = sortByName(
                 mics.map((mic) => ({
                     id: mic.id,
@@ -244,15 +248,15 @@ const loadActions = {
         // get slide actions
         const slideActions = data.actions?.slideActions || []
         if (slideActions.length) {
-            if (mediaList.length) mediaList.push("SEPERATOR")
+            if (mediaList.length) mediaList.push("SEPARATOR")
             const actionItems = sortByName(
                 slideActions.map((action) => {
                     const triggerId = getActionTriggerId(action.triggers?.[0])
                     const customData = actionData[triggerId] || {}
                     const actionValue = action?.actionValues?.[triggerId] || action?.actionValues?.[action.triggers?.[0]] || {}
-                    const customName = getActionName(triggerId, actionValue) || (action.name !== translate(customData.name) ? action.name : "")
+                    const customName = getActionName(triggerId, actionValue) || (action.name !== translateText(customData.name) ? action.name : "")
 
-                    const label = translate(actionData[triggerId]?.name || "") + (customName ? ` (${customName})` : "")
+                    const label = translateText(actionData[triggerId]?.name || "") + (customName ? ` (${customName})` : "")
                     const icon = actionData[triggerId]?.icon || "actions"
 
                     return { id: action.id || triggerId, label, translate: false, icon, type: "action" }
@@ -280,10 +284,12 @@ const loadActions = {
         return items
     },
     bind_slide: (_items, isItem = false) => {
-        const outputList: any[] = sortByName(keysToID(get(outputs)).filter((a) => !a.isKeyOutput && !a.stageOutput))
+        const outputList: any[] = sortByName(keysToID(get(outputs)).filter((a) => !a.stageOutput))
 
-        let contextOutputList: (ContextMenuItem | "SEPERATOR")[] = outputList.map((a) => ({ id: a.id, label: a.name, translate: false }))
-        if (isItem) contextOutputList.push("SEPERATOR", { id: "stage", label: "menu.stage" })
+        let contextOutputList: (ContextMenuItem | "SEPARATOR")[] = outputList.map((a) => ({ id: a.id, label: a.name, translate: false }))
+        const isOverlay = get(activeEdit).type === "overlay"
+        // overlay items does not show up in stage view anyway
+        if (isItem && !isOverlay) contextOutputList.push("SEPARATOR", { id: "stage", label: "menu.stage" })
 
         let currentBindings: string[] = []
         if (isItem) {
@@ -335,18 +341,18 @@ function sortItems(items: ContextMenuItem[], id: "shows" | "projects" | "media")
 
 function sortItemsByLabel(items: ContextMenuItem[]) {
     return items.sort((a, b) => {
-        const aName = a.translate ? translate(a.label) : a.label
-        const bName = b.translate ? translate(b.label) : b.label
+        const aName = a.translate ? translateText(a.label) : a.label
+        const bName = b.translate ? translateText(b.label) : b.label
 
         return aName.localeCompare(bName)
     })
 }
 
-export function loadItems(id: string): [string, ContextMenuItem | "SEPERATOR"][] {
+export function loadItems(id: string): [string, ContextMenuItem | "SEPARATOR"][] {
     if (!loadActions[id]) return []
 
-    const items: (ContextMenuItem | "SEPERATOR")[] = loadActions[id]([])
-    const menuItems: [string, ContextMenuItem | "SEPERATOR"][] = items.map((a) => [a === "SEPERATOR" ? a : id, a])
+    const items: (ContextMenuItem | "SEPARATOR")[] = loadActions[id]([])
+    const menuItems: [string, ContextMenuItem | "SEPARATOR"][] = items.map((a) => [a === "SEPARATOR" ? a : id, a])
 
     return menuItems
 }

@@ -4,6 +4,18 @@ import { CaptureHelper } from "../capture/CaptureHelper"
 import { CaptureTransmitter } from "../capture/helpers/CaptureTransmitter"
 import util from "./vingester-util"
 
+// Dynamic import for grandiose ES module to prevent TypeScript compilation issues
+let warned = false
+const loadGrandiose = async () => {
+    try {
+        return await import('grandiose')
+    } catch (err) {
+        if (!warned) console.warn('NDI not available:', err.message)
+        warned = true
+        return null
+    }
+}
+
 // Resources:
 // https://www.npmjs.com/package/grandiose-mac
 // https://github.com/Streampunk/grandiose
@@ -33,12 +45,15 @@ export class NdiSender {
 
     static async createSenderNDI(id: string, title = "") {
         if (this.ndiDisabled || this.NDI[id]) return
-        const grandiose = require("grandiose")
 
         this.NDI[id] = { name: `FreeShow NDI${title ? ` - ${title}` : ""}` }
         console.info("NDI - creating sender: " + this.NDI[id].name)
 
         try {
+            const grandiose = await loadGrandiose()
+            if (!grandiose) return
+
+            /* eslint @typescript-eslint/await-thenable: 0 */
             this.NDI[id].sender = await grandiose.send({
                 name: this.NDI[id].name,
                 clockVideo: false,
@@ -76,7 +91,6 @@ export class NdiSender {
 
     static async sendVideoBufferNDI(id: string, buffer: Buffer, { size = { width: 1280, height: 720 }, ratio = 16 / 9, framerate = 1 }) {
         if (this.ndiDisabled || !this.NDI[id]?.sender) return
-        const grandiose = require("grandiose")
 
         /*  convert from ARGB (Electron/Chromium on big endian CPU)
         to BGRA (supported input of NDI SDK). On little endian
@@ -86,6 +100,9 @@ export class NdiSender {
         }
 
         /*  optionally convert from BGRA to BGRX (no alpha channel)  */
+        const grandiose = await loadGrandiose()
+        if (!grandiose) return
+
         const fourCC = grandiose.FOURCC_BGRA
         // if (!this.cfg.v) {
         //     util.ImageBufferAdjustment.BGRAtoBGRX(buffer)
@@ -133,12 +150,14 @@ export class NdiSender {
     }
 
     static bytesForFloat32 = 4
-    static sendAudioBufferNDI(buffer: Buffer, { sampleRate, channelCount }: { sampleRate: number; channelCount: number }) {
+    static async sendAudioBufferNDI(buffer: Buffer, { sampleRate, channelCount }: { sampleRate: number; channelCount: number }) {
         if (this.ndiDisabled || !Object.values(this.NDI).find((a) => a?.sendAudio)) return
-        const grandiose = require("grandiose")
 
         const ndiAudioBuffer = convertPCMtoPlanarFloat32(buffer, channelCount)
         if (!ndiAudioBuffer) return
+
+        const grandiose = await loadGrandiose()
+        if (!grandiose) return
 
         const now = this.timeStart + process.hrtime.bigint()
         const frame = {

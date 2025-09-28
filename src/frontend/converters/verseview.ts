@@ -1,22 +1,30 @@
-import { activePopup, alertMessage, dictionary } from "../stores"
-import { xml2json } from "./xml"
 import { uid } from "uid"
 import { ShowObj } from "../classes/Show"
-import { createCategory, setTempShows } from "./importHelpers"
+import { DEFAULT_ITEM_STYLE } from "../components/edit/scripts/itemHelpers"
 import { checkName, initializeMetadata } from "../components/helpers/show"
-import { get } from "svelte/store"
+import { activePopup, alertMessage } from "../stores"
+import { translateText } from "../utils/language"
+import { createCategory, setTempShows } from "./importHelpers"
+import { xml2json } from "./xml"
 
-function createSlides({ slide }: any) {
-    const slides: any = {}
-    const layout: any[] = []
-
-    if (typeof slide !== "string") {
-        slide = slide["#cdata"]
+function cdataString(data: any): string {
+    if (typeof data === "string") {
+        return data
     }
+    if (data && typeof data === "object" && "#cdata" in data) {
+        return data["#cdata"]
+    }
+    return ""
+}
 
-    if (!slide) return { slides, layout }
+function createSlides({ slide, slide2 }: any) {
+    const slides: any = {}
+    const layout: any[] = [];
 
-    slide
+    [
+        cdataString(slide),
+        cdataString(slide2)
+    ].forEach(s => s
         .split("<slide>")
         .filter((a) => Boolean(a.trim()))
         .map((lines) =>
@@ -32,7 +40,7 @@ function createSlides({ slide }: any) {
 
             const items = [
                 {
-                    style: "inset-inline-start:50px;top:120px;width:1820px;height:840px;",
+                    style: DEFAULT_ITEM_STYLE,
                     lines: lines.map((text: any) => ({ align: "", text: [{ style: "", value: text.trim() }] })),
                 },
             ]
@@ -45,6 +53,7 @@ function createSlides({ slide }: any) {
                 items,
             }
         })
+    )
 
     return { slides, layout }
 }
@@ -52,8 +61,6 @@ function createSlides({ slide }: any) {
 export function convertVerseVIEW(data: any) {
     activePopup.set("alert")
     alertMessage.set("popup.importing")
-
-    const categoryId = createCategory("VerseVIEW")
 
     setTimeout(() => {
         const tempShows: any[] = []
@@ -69,28 +76,38 @@ export function convertVerseVIEW(data: any) {
             if (!root) return
 
             const { songDB } = root
-            const { song: songs } = songDB
+            const songs = Array.isArray(songDB.song) ? songDB.song : [songDB.song]
 
             for (const song of songs) {
                 const layoutID = uid()
+
+                const categoryId = createCategory(`VerseVIEW/${cdataString(song.category) || "Uncategorized"}`)
                 const show = new ShowObj(false, categoryId, layoutID)
                 show.origin = "verseview"
 
-                show.name = checkName(song.name)
+                show.name = checkName(cdataString(song.name))
 
                 const { slides, layout }: any = createSlides(song)
 
+                const songNum = cdataString(song.subcat)
+
                 show.meta = initializeMetadata({
-                    // number: song.number,
-                    title: song.name,
-                    author: song.author,
-                    // publisher: song.publisher,
-                    // copyright: song.copyright,
+                    number: Number.isNaN(songNum) ? String(songNum) : '',
+                    title: cdataString(song.name),
+                    author: cdataString(song.author),
+                    publisher: cdataString(song.copyright),
+                    copyright: cdataString(song.copyright),
                     // CCLI: null,
                     // year: song.year,
                 })
                 show.slides = slides
-                show.layouts = { [layoutID]: { name: get(dictionary).example?.default || "", notes: "", slides: layout } }
+                show.layouts = {
+                    [layoutID]: {
+                        name: translateText("example.default"),
+                        notes: "",
+                        slides: layout
+                    }
+                }
 
                 tempShows.push({ id: uid(), show })
             }

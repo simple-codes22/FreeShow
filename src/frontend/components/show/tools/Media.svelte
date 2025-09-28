@@ -5,15 +5,16 @@
     import { requestMain } from "../../../IPC/main"
     import { AudioMicrophone } from "../../../audio/audioMicrophone"
     import { AudioPlayer } from "../../../audio/audioPlayer"
-    import { activeShow, dictionary, driveData, media, outLocked, outputs, playingAudio, showsCache, styles } from "../../../stores"
-    import { translate } from "../../../utils/language"
+    import { activePopup, activeShow, alertMessage, dictionary, driveData, media, outLocked, outputs, playingAudio, showsCache, styles } from "../../../stores"
+    import { translateText } from "../../../utils/language"
+    import { getAccess } from "../../../utils/profile"
     import { send } from "../../../utils/request"
     import { actionData } from "../../actions/actionData"
     import { getActionName, getActionTriggerId, runAction } from "../../actions/actions"
     import MediaLoader from "../../drawer/media/MediaLoader.svelte"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
-    import { sortByName } from "../../helpers/array"
+    import { clone, sortByName } from "../../helpers/array"
     import { getExtension, getMediaStyle, getMediaType, isMediaExtension, loadThumbnail, mediaSize } from "../../helpers/media"
     import { findMatchingOut, getActiveOutputs, getCurrentStyle, setOutput } from "../../helpers/output"
     import { _show } from "../../helpers/shows"
@@ -117,6 +118,20 @@
     } else mics = []
 
     function setBG(id: string, key: string, value: boolean) {
+        if (show.locked) {
+            alertMessage.set("show.locked_info")
+            activePopup.set("alert")
+            return
+        }
+
+        const profile = getAccess("shows")
+        const readOnly = profile.global === "read" || profile[show.category || ""] === "read"
+        if (readOnly) {
+            alertMessage.set("profile.locked")
+            activePopup.set("alert")
+            return
+        }
+
         showsCache.update((a) => {
             let bgs = a[$activeShow!.id].media
             if (!bgs[id]) return a // old media
@@ -177,16 +192,19 @@
                             size={3}
                             on:click={() => {
                                 if (!$outLocked) {
-                                    setOutput("background", { path: background.path, type: background.type, loop: background.loop !== false, muted: background.muted !== false, ...mediaStyle })
+                                    let style = clone(mediaStyle)
+                                    style.fit = $media[background.path || ""]?.fit || ""
+                                    delete style.fitOptions
+
+                                    setOutput("background", { path: background.path, type: background.type, loop: background.loop !== false, muted: background.muted !== false, ...style })
                                     if (background.type === "video") send(OUTPUT, ["DATA"], { [outputId]: { duration: 0, paused: false, muted: background.muted !== false, loop: background.loop !== false } })
                                 }
                             }}
-                            title={$dictionary.media?.play}
                         >
                             <MediaLoader name={background.name} path={background.path || ""} thumbnailPath={bgPath} type={background.type} {mediaStyle} />
                         </HoverButton>
 
-                        <p title={background.path}>{background.name}</p>
+                        <p data-title={background.path}>{background.name}</p>
 
                         {#if background.count > 1}
                             <span style="color: var(--secondary);font-weight: bold;">{background.count}</span>
@@ -229,11 +247,10 @@
                                         if (type === "video") send(OUTPUT, ["DATA"], { [outputId]: { duration: 0, paused: false, muted: true, loop: true } })
                                     }
                                 }}
-                                title={$dictionary.media?.play}
                             >
                                 <MediaLoader name={background.name} path={background.path} {type} {mediaStyle} />
                             </HoverButton>
-                            <p title={background.path}>{background.name}</p>
+                            <p data-title={background.path}>{background.name}</p>
                         </div>
                     </SelectElem>
                 {/each}
@@ -291,7 +308,7 @@
                 {@const actionId = getActionTriggerId(action.triggers?.[0])}
                 {@const customData = actionData[actionId] || {}}
                 {@const actionValue = action?.actionValues?.[actionId] || action?.actionValues?.[action.triggers?.[0]] || {}}
-                {@const customName = getActionName(actionId, actionValue) || (action.name !== translate(customData.name) ? action.name : "")}
+                {@const customName = getActionName(actionId, actionValue) || (action.name !== translateText(customData.name) ? action.name : "")}
 
                 <SelectElem id="action" data={action} draggable>
                     <!-- class="context #action" -->

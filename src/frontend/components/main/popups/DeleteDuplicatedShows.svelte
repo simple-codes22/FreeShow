@@ -1,14 +1,13 @@
 <script lang="ts">
     import { Show } from "../../../../types/Show"
-    import { activePage, activePopup, dictionary, popupData, shows, showsCache } from "../../../stores"
+    import { activePage, activePopup, popupData, shows, showsCache } from "../../../stores"
     import { getSlideText } from "../../edit/scripts/textStyle"
     import { history } from "../../helpers/history"
-    import Icon from "../../helpers/Icon.svelte"
     import { loadShows } from "../../helpers/setShow"
     import T from "../../helpers/T.svelte"
-    import Button from "../../inputs/Button.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
-    import TextArea from "../../inputs/TextArea.svelte"
+    import HRule from "../../input/HRule.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialTextarea from "../../inputs/MaterialTextarea.svelte"
     import Center from "../../system/Center.svelte"
     import Date from "../../system/Date.svelte"
     import Loader from "../Loader.svelte"
@@ -37,7 +36,8 @@
                     if (compareShowText === showText) dIds.push(id)
                 })
 
-                if (dIds.length > 1) deleteIds.push(...dIds)
+                dIds.shift()
+                if (dIds.length) deleteIds.push(...dIds)
             })
         )
 
@@ -153,7 +153,7 @@
 
     /////
 
-    function getIds(index: number): string[] {
+    function getIds(index: number, _updater = null): string[] {
         return data[index]?.ids || []
     }
 
@@ -175,12 +175,10 @@
 </script>
 
 {#if manualDeletion}
-    <Button class="popup-back" title={$dictionary.actions?.back} on:click={() => (manualDeletion = false)}>
-        <Icon id="back" size={2} white />
-    </Button>
+    <MaterialButton class="popup-back" icon="back" iconSize={1.3} title="actions.back" on:click={() => (manualDeletion = false)} />
 
     <div class="shows">
-        {#each getIds(manualIndex) as showId, i}
+        {#each getIds(manualIndex, data) as showId, i}
             {@const show = $shows[showId] || {}}
             <div class="show">
                 <p style="display: flex;align-items: center;justify-content: space-between;padding: 5px 0;">
@@ -190,23 +188,22 @@
                 </p>
 
                 {#if loadedTexts[i]}
-                    <TextArea value={loadedTexts[i]} style="min-height: 180px;" disabled />
+                    <MaterialTextarea label="edit.text" rows={5} value={loadedTexts[i]} disabled />
                 {/if}
 
-                <Button style="width: 100%;" on:click={() => deleteAtIndex(i)} center red>
-                    <Icon id="delete" right />
+                <MaterialButton icon="delete" class="red" style="padding: 5px;" on:click={() => deleteAtIndex(i)} white>
                     <T id="actions.delete" />
-                </Button>
+                </MaterialButton>
             </div>
+
+            <HRule />
         {/each}
     </div>
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={next} center>
-            <Icon id="forward" right />
-            <T id="guide.skip" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" icon="forward" on:click={next}>
+        <T id="guide.skip" />
+    </MaterialButton>
+
     <!-- {#if !loadedTexts.length}
         {#if loading}
             <Loader></Loader>
@@ -221,30 +218,22 @@
         <Loader />
     </Center>
 {:else}
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteManual} center>
-            <T id="show.delete_manual" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" on:click={deleteManual}>
+        <T id="show.delete_manual" />
+    </MaterialButton>
 
-    <br />
+    <HRule />
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteMatching} center red>
-            <T id="show.delete_match" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" class="red" on:click={deleteMatching}>
+        <T id="show.delete_match" />
+    </MaterialButton>
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteOldest} center red>
-            <T id="show.delete_keep_last_modified" />
-        </Button>
-    </CombinedInput>
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteNewest} center red>
-            <T id="show.delete_keep_first_created" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" class="red" on:click={deleteOldest}>
+        <T id="show.delete_keep_last_modified" />
+    </MaterialButton>
+    <MaterialButton variant="outlined" class="red" on:click={deleteNewest}>
+        <T id="show.delete_keep_first_created" />
+    </MaterialButton>
 {/if}
 
 <style>
@@ -252,11 +241,22 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        margin-bottom: 20px;
     }
 
     .show {
         display: flex;
         flex-direction: column;
+    }
+
+    /* red */
+    :global(button.red) {
+        background-color: rgb(255 0 0 / 0.25) !important;
+    }
+    :global(button.red):hover:not(.contained):not(.active) {
+        background-color: rgb(255 0 0 / 0.35) !important;
+    }
+    :global(button.red):active:not(.contained):not(.active),
+    :global(button.red):focus:not(.contained):not(.active) {
+        background-color: rgb(255 0 0 / 0.3) !important;
     }
 </style>

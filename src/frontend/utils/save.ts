@@ -31,7 +31,7 @@ import {
     effects,
     effectsLibrary,
     emitters,
-    errorHasOccured,
+    errorHasOccurred,
     events,
     folders,
     formatNewShow,
@@ -56,6 +56,7 @@ import {
     overlays,
     playerVideos,
     ports,
+    profiles,
     projectTemplates,
     projects,
     redoHistory,
@@ -100,7 +101,7 @@ import { syncDrive } from "./drive"
 export function save(closeWhenFinished = false, customTriggers: SaveActions = {}) {
     console.info("SAVING...")
     if ((!customTriggers.autosave || !get(saved)) && !customTriggers.backup) {
-        newToast("$toast.saving")
+        newToast("toast.saving")
         customActionActivation("save")
     }
 
@@ -133,7 +134,6 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
         outLocked: get(outLocked),
         outputs: get(outputs),
         sorted: get(sorted),
-        styles: get(styles),
         remotePassword: get(remotePassword),
         resized: get(resized),
         slidesOptions: get(slidesOptions),
@@ -152,7 +152,7 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
         chumsSyncCategories: get(chumsSyncCategories)
     }
 
-    // settings exclusive to the local mashine (path names that shouldn't be synced with cloud)
+    // settings exclusive to the local machine (path names that shouldn't be synced with cloud)
     const syncedSettings: { [key in SaveListSyncedSettings]: any } = {
         categories: get(categories),
         drawSettings: get(drawSettings),
@@ -161,6 +161,8 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
         scriptures: get(scriptures),
         scriptureSettings: get(scriptureSettings),
         templateCategories: get(templateCategories),
+        styles: get(styles),
+        profiles: get(profiles),
         timers: get(timers),
         variables: get(variables),
         triggers: get(triggers),
@@ -214,14 +216,14 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
     deletedShows.set([])
     renamedShows.set([])
 
-    if (customTriggers.backup) newToast("$settings.backup_started")
+    if (customTriggers.backup) newToast("settings.backup_started")
     // trigger toast before saving
     setTimeout(() => sendMain(Main.SAVE, allSavedData))
 }
 
 export function saveComplete({ closeWhenFinished, customTriggers }: { closeWhenFinished: boolean; customTriggers?: SaveActions }) {
     if (!closeWhenFinished) {
-        if ((!customTriggers?.autosave || !get(saved)) && !customTriggers?.backup) newToast("$toast.saved")
+        if ((!customTriggers?.autosave || !get(saved)) && !customTriggers?.backup) newToast("toast.saved")
 
         saved.set(true)
         console.info("SAVED!")
@@ -240,7 +242,8 @@ export function saveComplete({ closeWhenFinished, customTriggers }: { closeWhenF
 }
 
 export function initializeClosing(skipPopup = false) {
-    if (!skipPopup && (get(special).showClosePopup || get(errorHasOccured))) activePopup.set("unsaved")
+    // don't save automatically if an error has happened in case it breaks something
+    if (!skipPopup && (get(special).showClosePopup || get(errorHasOccurred))) activePopup.set("unsaved")
     // "saved" does not count for all minor changes, but should be fine
     else if (get(saved)) saveComplete({ closeWhenFinished: true })
     else save(true)
@@ -252,11 +255,11 @@ export function closeApp() {
 
 // GET SAVED STATE
 
-let initialized = false
 export function unsavedUpdater() {
     const cachedValues: { [key: string]: string } = {}
     const s = { ...saveList, folders, projects, showsCache, stageShows, deletedShows, renamedShows }
 
+    let initialized = false
     Object.keys(s).forEach((id) => {
         if (!s[id]) return
 
@@ -269,7 +272,9 @@ export function unsavedUpdater() {
                 cachedValues[id] = stringObj
             }
 
-            if (initialized) saved.set(false)
+            if (!initialized) return
+
+            saved.set(false)
             if (id === "deletedShows" || id === "renamedShows") {
                 setTimeout(() => saved.set(false))
             }
@@ -345,6 +350,7 @@ const saveList: { [key in SaveList]: any } = {
     outputs: null,
     sorted: null,
     styles,
+    profiles,
     overlayCategories,
     overlays,
     playerVideos,

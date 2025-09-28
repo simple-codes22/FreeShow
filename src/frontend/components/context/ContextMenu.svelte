@@ -1,8 +1,9 @@
 <script lang="ts">
     import { fade } from "svelte/transition"
-    import { activePage, activePopup, contextActive, contextData, os, spellcheck, localeDirection } from "../../stores"
+    import { activePage, activePopup, contextActive, contextData, localeDirection, os, special, spellcheck, theme, themes } from "../../stores"
     import { closeContextMenu } from "../../utils/shortcuts"
     import { getEditItems } from "../edit/scripts/itemHelpers"
+    import { hexToRgb } from "../helpers/color"
     import ContextChild from "./ContextChild.svelte"
     import ContextItem from "./ContextItem.svelte"
     import { contextMenuItems, contextMenuLayouts } from "./contextMenus"
@@ -72,7 +73,7 @@
 
         menus.forEach((c2: string, i: number) => {
             if (contextMenuLayouts[c2]) menu.push(...contextMenuLayouts[c2])
-            if (i < menus.length - 1) menu.push("SEPERATOR")
+            if (i < menus.length - 1) menu.push("SEPARATOR")
         })
 
         return menu
@@ -126,22 +127,37 @@
             top = document.querySelector(".contextMenu")!.getBoundingClientRect().top <= 0
         })
     }
+
+    // let light = false
+    // $: if ($theme) light = !isDarkTheme()
+    let rgb = { r: 35, g: 35, b: 45 }
+    $: if ($theme) updateColor()
+    function updateColor() {
+        const color = $themes[$theme]?.colors["primary"]
+        if (!color) return
+
+        const newRgb = hexToRgb(color)
+        rgb = { r: Math.max(0, newRgb.r - 1), g: Math.max(0, newRgb.g - 5), b: Math.max(0, newRgb.b - 5) }
+    }
+
+    $: isOptimized = $special.optimizedMode
 </script>
 
 <svelte:window on:contextmenu={onContextMenu} on:click={click} />
 
 {#if $contextActive}
-    <div class="contextMenu" style="left: {x}px; top: {y}px;transform: translateY(-{translate}%);" class:top transition:fade={{ duration: 60 }}>
+    <div class="contextMenu" style="left: {x}px; top: {y}px;transform: translateY(-{translate}%);--background: rgb({rgb.r} {rgb.g} {rgb.b} / 0.97);" class:top class:isOptimized transition:fade={{ duration: 60 }}>
         {#key activeMenu}
             <SpellCheckMenu />
 
             {#each activeMenu as id}
-                {#if id === "SEPERATOR"}
+                {#if id === "SEPARATOR"}
                     <hr />
                 {:else if contextMenuItems[id]?.items}
                     <!-- conditional menus -->
                     {#if shouldShowMenuWithItems(id)}
-                        <ContextChild {id} {contextElem} {side} translate={activeMenu.length > 2 ? 0 : translate} />
+                        <!-- {activeMenu.length > 2 ? translate : 0} -->
+                        <ContextChild {id} {contextElem} {side} translate={y > 400 ? translate : 0} />
                     {/if}
                 {:else}
                     <ContextItem {id} {contextElem} />
@@ -156,18 +172,16 @@
         position: fixed;
         min-width: 250px;
         box-shadow: 1px 1px 3px 2px rgb(0 0 0 / 0.2);
-        padding: 5px 0;
+        padding: 8px 0;
         z-index: 5001;
 
-        /* border-radius: var(--border-radius); */
-        border-radius: 3px;
+        border-radius: 6px;
 
-        background-color: var(--primary);
-        /* get rgb from theme primary color... */
-        /* background-color: rgb(41 44 54 / 0.8); */
-        /* background: rgba(41, 44, 54, 0.98);
-         background: linear-gradient(150deg, rgba(41, 44, 54, 0.98) 0%, rgba(41, 49, 59, 0.95) 100%); */
-        /* backdrop-filter: blur(3px); */
+        border: 1px solid var(--primary-lighter);
+
+        --background: rgba(35, 35, 45, 0.97);
+        background-color: var(--background);
+        backdrop-filter: blur(8px);
     }
 
     .top {
@@ -176,8 +190,8 @@
     }
 
     hr {
-        margin: 5px 10px;
-        height: 2px;
+        margin: 8px 0;
+        height: 1px;
         border: none;
         background-color: var(--primary-lighter);
     }

@@ -1,17 +1,17 @@
 <script lang="ts">
     import { onMount } from "svelte"
-    import { editColumns, resized, localeDirection } from "../../stores"
+    import { editColumns, localeDirection, resized } from "../../stores"
     import { DEFAULT_WIDTH } from "../../utils/common"
     import Icon from "../helpers/Icon.svelte"
 
     export let id: string
-    export let side: "left" | "right" | "top" | "bottom" = "left";
+    export let side: "left" | "right" | "top" | "bottom" = "left"
 
-    const originalSide = side;
+    const originalSide = side
     $: if ($localeDirection === "rtl") {
-        side = originalSide === "left" ? "right" : originalSide === "right" ? "left" : originalSide;
+        side = originalSide === "left" ? "right" : originalSide === "right" ? "left" : originalSide
     } else {
-        side = originalSide;
+        side = originalSide
     }
 
     let width: number = DEFAULT_WIDTH
@@ -41,7 +41,7 @@
         right: (e: any) => e.clientX < e.target.closest(".panel")?.offsetLeft + handleWidth && e.offsetX <= handleWidth && e.offsetX >= 0,
         // top: (e: any) => e.target.closest(".panel")?.offsetHeight - e.offsetY <= handleWidth,
         top: (e: any) => e.clientY < e.target.closest(".panel")?.offsetTop + handleWidth && e.offsetY <= handleWidth && e.offsetY >= 0,
-        bottom: (e: any) => e.clientY < e.target.closest(".panel")?.offsetTop + e.target.closest(".panel")?.offsetParent.offsetTop + handleWidth && e.offsetY <= handleWidth && e.offsetY >= 0,
+        bottom: (e: any) => e.clientY < e.target.closest(".panel")?.offsetTop + e.target.closest(".panel")?.offsetParent.offsetTop + handleWidth && e.offsetY <= handleWidth && e.offsetY >= 0
     }
 
     function mousedown(e: any) {
@@ -51,7 +51,7 @@
             x: e.clientX,
             y: e.clientY,
             offset: side === "top" || side === "bottom" ? window.innerHeight - width - e.clientY : window.innerWidth - width - e.clientX,
-            target: e.target,
+            target: e.target
         }
     }
 
@@ -59,12 +59,13 @@
         left: (e: any) => e.clientX,
         right: (e: any) => window.innerWidth - e.clientX - mouse!.offset,
         top: (e: any) => e.clientY,
-        bottom: (e: any) => window.innerHeight - e.clientY - mouse!.offset,
+        bottom: (e: any) => window.innerHeight - e.clientY - mouse!.offset
     }
 
+    const MIN_WIDTH = 0.69
     function getWidth(width: number) {
-        if (width < (DEFAULT_WIDTH * 0.6) / 2) return minWidth
-        if (width < DEFAULT_WIDTH * 0.6) return DEFAULT_WIDTH * 0.6
+        if (width < (DEFAULT_WIDTH * MIN_WIDTH) / 2) return minWidth
+        if (width < DEFAULT_WIDTH * MIN_WIDTH) return DEFAULT_WIDTH * MIN_WIDTH
         if (width > DEFAULT_WIDTH - 20 && width < DEFAULT_WIDTH + 20) return DEFAULT_WIDTH
         if (width > maxWidth) return maxWidth
         move = true
@@ -93,6 +94,13 @@
         storeWidth = null
     }
 
+    // const handleKeydown = createKeydownHandler((_e: KeyboardEvent) => {
+    //     if (width <= minWidth) {
+    //         width = storeWidth === null || storeWidth < DEFAULT_WIDTH / 2 ? DEFAULT_WIDTH : storeWidth
+    //         storeWidth = null
+    //     }
+    // })
+
     $: if (width !== null) storeValue()
     function storeValue() {
         if (!loaded) return
@@ -102,7 +110,7 @@
             return a
         })
 
-        if (side === 'left') {
+        if (side === "left") {
             let gap = maxWidth - DEFAULT_WIDTH
             let triple = DEFAULT_WIDTH + gap * 0.8
             let double = DEFAULT_WIDTH + gap * 0.4
@@ -124,6 +132,12 @@
 
 <svelte:window on:mouseup={mouseup} on:mousemove={mousemove} />
 
+<!-- Did not work, and broke presentation navigation: -->
+<!-- on:keydown={handleKeydown}
+role="button"
+tabindex="0"
+aria-label="Resize panel {id}"
+aria-expanded={width > minWidth} -->
 <div {id} style="{side === 'left' || side === 'right' ? 'width' : 'height'}: {width}px; --handle-width: {handleWidth}px" class="panel bar_{side}" class:zero={width <= handleWidth} on:mousedown={mousedown} on:click={click}>
     {#if width <= handleWidth}
         <Icon id="arrow_right" size={1.3} white />
@@ -140,6 +154,9 @@
         overflow: hidden;
         position: relative;
         /* background: var(--primary); */
+
+        /* pressing shift when active created an outline around the element */
+        outline: none;
     }
 
     :global(.bar_left) {
@@ -179,7 +196,7 @@
         position: absolute;
         top: 50%;
 
-        inset-inline-start: 50%;
+        left: 50%;
         transform: translate(-50%, -50%);
 
         /* right: 0;

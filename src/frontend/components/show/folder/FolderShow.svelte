@@ -15,7 +15,8 @@
     import { findMatchingOut, getActiveOutputs, setOutput, startFolderTimer } from "../../helpers/output"
     import T from "../../helpers/T.svelte"
     import { joinTime, secondsToTime } from "../../helpers/time"
-    import Button from "../../inputs/Button.svelte"
+    import FloatingInputs from "../../input/FloatingInputs.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
     import { clearBackground, clearSlide } from "../../output/clear"
     import Center from "../../system/Center.svelte"
 
@@ -97,7 +98,7 @@
                     {#if file.type === "image" && timer}
                         <div>
                             <div class="button">
-                                <div style="padding: 3px;" title={$dictionary.preview?.nextTimer}>
+                                <div style="padding: 3px;" data-title={$dictionary.preview?.nextTimer}>
                                     <Icon id="clock" size={0.9} white />
                                 </div>
                             </div>
@@ -109,7 +110,7 @@
                     {#if file.type === "video"}
                         <div>
                             <div class="button">
-                                <div style="padding: 3px;" title={$dictionary.actions?.next_after_media}>
+                                <div style="padding: 3px;" data-title={$dictionary.actions?.next_after_media}>
                                     <Icon id="forward" size={0.9} white />
                                 </div>
                             </div>
@@ -132,28 +133,25 @@
 </div>
 
 {#if !$focusMode}
-    <div class="actions">
-        <div class="left">
-            <Button on:click={() => sendMain(Main.SYSTEM_OPEN, path)}>
-                <Icon id="folder" right />
-                <T id="main.open" />
-            </Button>
-        </div>
+    <FloatingInputs side="left" onlyOne>
+        <MaterialButton icon="folder" on:click={() => sendMain(Main.OPEN_FOLDER_PATH, path)}>
+            <T id="main.open" />
+        </MaterialButton>
+    </FloatingInputs>
 
-        <div class="right">
-            <Button
-                disabled={!folderFiles.length}
-                on:click={() => {
-                    popupData.set({ type: "folder", value: timer, totalTime })
-                    activePopup.set("next_timer")
-                }}
-                title="{$dictionary.popup?.next_timer}{totalTime !== 0 ? `: ${totalTime}s` : ''}"
-            >
-                <Icon size={1.1} id="clock" white={totalTime === 0} right />
-                {joinTime(secondsToTime(totalTime))}
-            </Button>
-        </div>
-    </div>
+    <FloatingInputs onlyOne>
+        <MaterialButton
+            disabled={!folderFiles.length}
+            on:click={() => {
+                popupData.set({ type: "folder", value: timer, totalTime })
+                activePopup.set("next_timer")
+            }}
+            title="popup.next_timer{totalTime !== 0 ? `: ${totalTime}s` : ''}"
+        >
+            <Icon size={1.1} id="clock" white={totalTime === 0} />
+            {joinTime(secondsToTime(totalTime))}
+        </MaterialButton>
+    </FloatingInputs>
 {/if}
 
 <style>
@@ -164,13 +162,6 @@
 
         height: 100%;
         align-content: start;
-    }
-
-    .actions {
-        display: flex;
-        justify-content: space-between;
-        width: 100%;
-        background-color: var(--primary-darkest);
     }
 
     /* icons */
@@ -192,7 +183,7 @@
         /* inset-inline-end: 2px; */
         flex-wrap: wrap-reverse;
         place-items: end;
-        right: 0;
+        inset-inline-end: 0;
     }
 
     .icons div {

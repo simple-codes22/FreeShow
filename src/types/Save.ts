@@ -14,6 +14,8 @@ export type SaveListSyncedSettings =
     | "drawSettings"
     | "overlayCategories"
     | "templateCategories"
+    | "styles"
+    | "profiles"
     | "timers"
     | "variables"
     | "triggers"
@@ -59,7 +61,6 @@ export type SaveListSettings =
     | "openedFolders"
     | "outputs"
     | "sorted"
-    | "styles"
     | "outLocked"
     | "ports"
     | "disabledServers"
@@ -109,4 +110,4 @@ export interface SaveData {
     closeWhenFinished: boolean
     customTriggers: SaveActions
 }
-export type SaveActions = { backup?: boolean; isAutoBackup?: boolean; changeUserData?: any; autosave?: boolean; reset?: boolean }
+export type SaveActions = { backup?: boolean; isAutoBackup?: boolean; backupShows?: boolean; changeUserData?: any; autosave?: boolean; reset?: boolean }

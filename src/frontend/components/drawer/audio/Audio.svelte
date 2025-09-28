@@ -4,15 +4,16 @@
     import { Main } from "../../../../types/IPC/Main"
     import { destroyMain, receiveMain, sendMain } from "../../../IPC/main"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
-    import { activePlaylist, activeRename, audioFolders, audioPlaylists, dictionary, drawerTabsData, effectsLibrary, labelsDisabled, media, outLocked, selectAllAudio, selected } from "../../../stores"
+    import { activePlaylist, activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, outLocked, selectAllAudio, selected } from "../../../stores"
+    import { translateText } from "../../../utils/language"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import { clone, sortByName } from "../../helpers/array"
     import { splitPath } from "../../helpers/get"
     import { getFileName, getMediaType } from "../../helpers/media"
-    import Button from "../../inputs/Button.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
-    import NumberInput from "../../inputs/NumberInput.svelte"
+    import FloatingInputs from "../../input/FloatingInputs.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialNumberInput from "../../inputs/MaterialNumberInput.svelte"
     import Center from "../../system/Center.svelte"
     import DropArea from "../../system/DropArea.svelte"
     import AudioStreams from "../live/AudioStreams.svelte"
@@ -166,14 +167,14 @@
             files = []
         } else if (!isDefault) {
             playlistName = name
-            if (name.includes(".")) playlistName = $dictionary.category?.[name.slice(name.indexOf(".") + 1)] || ""
+            if (name.includes(".")) playlistName = translateText(`category.${name.slice(name.indexOf(".") + 1)}`)
         }
 
         let playlistId = uid()
         audioPlaylists.update((a) => {
             a[playlistId] = {
                 name: playlistName,
-                songs: files.map((a) => a.path),
+                songs: files.map((a) => a.path)
             }
 
             return a
@@ -202,6 +203,8 @@
         selected.set({ id: "audio", data })
         selectAllAudio.set(false)
     }
+
+    $: pathString = path.replace(rootPath, "").replace(name, "").replaceAll("\\", "/").split("/").filter(Boolean).join("/")
 </script>
 
 <svelte:window on:keydown={keydown} />
@@ -213,15 +216,10 @@
         {:else if active === "audio_streams"}
             <AudioStreams />
         {:else if playlist && playlistSettings}
-            <CombinedInput>
-                <p><T id="settings.audio_crossfade" /></p>
-                <NumberInput value={playlist?.crossfade || 0} max={30} step={0.5} decimals={1} fixed={1} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
-            </CombinedInput>
-
-            <CombinedInput>
-                <p><T id="settings.playlist_volume" /></p>
-                <NumberInput value={playlist?.volume || 1} min={0.01} max={1} decimals={2} step={0.01} inputMultiplier={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail)} />
-            </CombinedInput>
+            <div class="settings">
+                <MaterialNumberInput label="settings.audio_crossfade" value={playlist?.crossfade || 0} max={30} step={0.5} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
+                <MaterialNumberInput label="settings.playlist_volume" value={Number(((playlist?.volume || 1) * 100).toFixed(2))} min={1} max={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail / 100)} />
+            </div>
 
             <!-- <CombinedInput>
                 <p><T id="settings.custom_audio_output" /></p>
@@ -265,83 +263,91 @@
     </div>
 </div>
 
-{#if active !== "microphones" && active !== "audio_streams" && active !== "effects_library"}
-    <div class="tabs" style="display: flex;align-items: center;" on:mousedown={storeSelected}>
-        {#if isDefault}
-            <span style="padding: 0.2em;opacity: 0;">.</span>
-        {:else if playlist}
-            <Button
-                disabled={$outLocked}
-                title={$activePlaylist?.id === active ? $dictionary.media?.stop : $dictionary.media?.play}
-                on:click={() => {
-                    if ($outLocked) return
-                    $activePlaylist?.id === active ? AudioPlaylist.stop() : AudioPlaylist.start(active || "")
-                }}
-            >
-                <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id === active} />
-            </Button>
+{#if active === "microphones" || active === "effects_library"}
+    <!-- nothing -->
+{:else if active === "audio_streams"}
+    <FloatingInputs onlyOne>
+        <MaterialButton icon="add" style="flex: 1;" on:click={() => activePopup.set("audio_stream")} center title="new.audio_stream">
+            {#if !$labelsDisabled}<T id="new.audio_stream" />{/if}
+        </MaterialButton>
+    </FloatingInputs>
+{:else if playlist}
+    <FloatingInputs side="left" on:mousedown={storeSelected}>
+        <MaterialButton
+            disabled={$outLocked}
+            title={$activePlaylist?.id === active ? "media.stop" : "media.play"}
+            on:click={() => {
+                if ($outLocked) return
+                $activePlaylist?.id === active ? AudioPlaylist.stop() : AudioPlaylist.start(active || "")
+            }}
+        >
+            <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id === active} />
+        </MaterialButton>
 
-            <div class="seperator" />
+        <div class="divider" />
 
-            <Button
-                title={$dictionary.media?.toggle_shuffle}
-                on:click={() => {
-                    if (!active) return
-                    AudioPlaylist.update(active, "mode", $audioPlaylists[active]?.mode === "shuffle" ? "default" : "shuffle")
-                    // if ($activePlaylist?.id === active) playlistNext("", $activePlaylist.active)
-                }}
-            >
-                <Icon size={1.1} id="shuffle_play" white={$audioPlaylists[active || ""]?.mode !== "shuffle"} />
-            </Button>
-            <Button
-                title={$dictionary.media?._loop}
-                on:click={() => {
-                    if (!active) return
-                    AudioPlaylist.update(active, "loop", $audioPlaylists[active]?.loop === undefined ? false : !$audioPlaylists[active]?.loop)
-                }}
-            >
-                <Icon size={1.1} id="loop" white={$audioPlaylists[active || ""]?.loop === false} />
-            </Button>
-        {:else}
-            <Button disabled={rootPath === path} title={$dictionary.actions?.back} on:click={goBack}>
-                <Icon size={1.3} id="back" />
-            </Button>
-        {/if}
-        <!-- <Button disabled={rootPath === path} title={$dictionary.actions?.home} on:click={() => (path = rootPath)}>
-            <Icon size={1.3} id="home" />
-        </Button> -->
-        <span style="flex: 1;text-align: center;">
-            {#key name}
-                {#if name?.includes(".")}
-                    <T id={name} />
-                {:else if playlist}
-                    {playlist.name}
-                {:else}
-                    {name}
-                {/if}
-            {/key}
-        </span>
+        <MaterialButton
+            title="media.toggle_shuffle"
+            on:click={() => {
+                if (!active) return
+                AudioPlaylist.update(active, "mode", $audioPlaylists[active]?.mode === "shuffle" ? "default" : "shuffle")
+                // if ($activePlaylist?.id === active) playlistNext("", $activePlaylist.active)
+            }}
+        >
+            <Icon size={1.1} id="shuffle_play" white={$audioPlaylists[active || ""]?.mode !== "shuffle"} />
+        </MaterialButton>
+        <MaterialButton
+            title="media._loop"
+            on:click={() => {
+                if (!active) return
+                AudioPlaylist.update(active, "loop", $audioPlaylists[active]?.loop === undefined ? false : !$audioPlaylists[active]?.loop)
+            }}
+        >
+            <Icon size={1.1} id="loop" white={$audioPlaylists[active || ""]?.loop === false} />
+        </MaterialButton>
+    </FloatingInputs>
 
-        {#if !playlist}
-            <Button title={$dictionary.new?.playlist} on:click={createPlaylist}>
-                <Icon size={1.2} id="playlist_create" right={!$labelsDisabled} />
+    <FloatingInputs round>
+        <MaterialButton isActive={playlistSettings} title="audio.playlist_settings" on:click={() => (playlistSettings = !playlistSettings)}>
+            <Icon size={1.1} id="options" white={!playlistSettings} />
+        </MaterialButton>
+    </FloatingInputs>
+{:else if active === "all" || active === "favourites"}
+    <!-- nothing -->
+{:else}
+    <!--  -->
+    {#if rootPath !== path}
+        <FloatingInputs side="left">
+            <MaterialButton disabled={rootPath === path} title="actions.back" on:click={goBack}>
+                <Icon id="back" white />
+            </MaterialButton>
+
+            <div class="divider"></div>
+
+            <p style="opacity: 0.8;display: flex;align-items: center;padding: 0 15px;">
+                <span style="opacity: 0.3;font-size: 0.9em;max-width: 500px;overflow: hidden;direction: rtl;">{pathString ? "/" : ""}{pathString}</span>
+                {name}
+
+                <!-- files count -->
+                <!-- {#if content && rootPath !== path}
+            <span style="opacity: 0.5;font-size: 0.9em;margin-inline-start: 10px;">{content}</span>
+        {/if} -->
+            </p>
+        </FloatingInputs>
+    {/if}
+
+    <!-- only show if audio content -->
+    {#if fullFilteredFiles.filter((a) => !a.folder)?.length}
+        <FloatingInputs onlyOne>
+            <MaterialButton title="new.playlist" on:click={createPlaylist}>
+                <Icon size={1.2} id="playlist_create" />
                 {#if !$labelsDisabled}<p><T id="new.playlist" /></p>{/if}
-            </Button>
-        {:else}
-            <Button active={playlistSettings === true} title={$dictionary.audio?.playlist_settings} on:click={() => (playlistSettings = !playlistSettings)}>
-                <Icon size={1.1} id="options" right={!$labelsDisabled} white={playlistSettings} />
-                {#if !$labelsDisabled}<p><T id="audio.playlist_settings" /></p>{/if}
-            </Button>
-        {/if}
-    </div>
+            </MaterialButton>
+        </FloatingInputs>
+    {/if}
 {/if}
 
 <style>
-    .tabs {
-        display: flex;
-        background-color: var(--primary-darkest);
-    }
-
     .grid {
         display: flex;
         flex-direction: column;
@@ -363,6 +369,16 @@
         background-color: rgb(0 0 20 / 0.08);
     }
 
+    .settings {
+        margin: 15px;
+        padding: 10px;
+
+        border: 1px solid var(--primary-lighter);
+
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
     .effects {
         display: flex;
         align-items: center;
@@ -376,11 +392,5 @@
     .effects :global(.selectElem button) {
         background-color: var(--primary-darkest);
         /* transition: 0.2s outline; */
-    }
-
-    .seperator {
-        width: 1px;
-        height: 100%;
-        background-color: var(--primary);
     }
 </style>

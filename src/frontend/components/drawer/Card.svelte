@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Resolution } from "../../../types/Settings"
     import { mediaOptions, outputs, styles } from "../../stores"
+    import { triggerClickOnEnterSpace } from "../../utils/clickable"
     import Icon from "../helpers/Icon.svelte"
     import { getResolution } from "../helpers/output"
     import Loader from "../main/Loader.svelte"
@@ -29,7 +30,7 @@
 
 <!-- display: table; -->
 <div class="main" style="{outlineColor ? 'outline: 2px solid ' + outlineColor + ';' : ''}flex-direction: {mode === 'grid' ? 'column' : 'row'};width: {mainWidth}%;" class:preview class:active>
-    <div class="over" style="flex-direction: {mode === 'grid' ? 'column' : 'row'};width: 100%;" on:mousedown on:click on:dblclick>
+    <div class="over" style="flex-direction: {mode === 'grid' ? 'column' : 'row'};width: 100%;" on:mousedown on:click on:dblclick on:keydown={triggerClickOnEnterSpace} tabindex="0" role="button">
         {#if preview}
             <div class="overlay" />
         {:else}
@@ -74,7 +75,7 @@
         background-color: rgb(255 255 255 / 0.05);
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
     }
 
     .over:hover > .card .overlayIcon {
@@ -85,7 +86,7 @@
         cursor: pointer;
 
         position: absolute;
-        inset-inline-start: 50%;
+        left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
 
@@ -108,7 +109,7 @@
         pointer-events: none;
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         background-color: rgb(0 0 0 / 0.3);
         height: 100%;
         width: 100%;
@@ -150,7 +151,7 @@
     .loader {
         position: absolute;
         top: 50%;
-        inset-inline-start: 50%;
+        left: 50%;
         transform: translate(-50%, -50%);
     }
 </style>

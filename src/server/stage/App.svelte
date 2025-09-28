@@ -113,6 +113,9 @@
         padding: 0;
         box-sizing: border-box;
         user-select: none;
+        -webkit-user-select: none; /* Safari/iOS specific */
+        -webkit-touch-callout: none; /* Prevents iOS callout menu */
+        -webkit-tap-highlight-color: transparent; /* Removes tap highlight on iOS */
 
         outline-offset: -4px;
         outline-color: var(--secondary);
@@ -132,13 +135,17 @@
 
         height: 100%;
 
+        /* iOS Safari touch optimizations */
+        touch-action: manipulation;
+        -webkit-text-size-adjust: 100%; /* Prevents iOS Safari from auto-zooming */
+
         /* width: 100vw;
   height: 100vh; */
     }
 
     :root {
-        --primary: #292c36;
-        --primary-lighter: #363945;
+        --primary: #242832;
+        --primary-lighter: #2f3542;
         --primary-darker: #191923;
         --primary-darkest: #12121c;
         --text: #f0f0ff;
@@ -183,7 +190,7 @@
     .clicked {
         position: absolute;
         bottom: 0;
-        inset-inline-start: 0;
+        left: 0;
         width: calc(100% - 20px);
         margin: 10px;
         padding: 10px;

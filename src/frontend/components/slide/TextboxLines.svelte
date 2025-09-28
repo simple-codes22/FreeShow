@@ -7,6 +7,7 @@
     import { getActiveOutputs, getOutputResolution, percentageStylePos } from "../helpers/output"
     import { replaceDynamicValues } from "../helpers/showActions"
     import { getStyles } from "../helpers/style"
+    import { createVirtualBreaks } from "../../show/slides"
 
     export let item: Item
     export let slideIndex = 0
@@ -38,7 +39,7 @@
     export let centerPreview = false
     export let revealed = -1
 
-    $: lines = clone(item?.lines || [])
+    $: lines = createVirtualBreaks(clone(item?.lines || []), outputStyle?.skipVirtualBreaks)
     $: if (linesStart !== null && linesEnd !== null && lines.length) {
         lines = lines.filter((a) => a.text.filter((a) => a.value !== undefined)?.length)
 
@@ -237,7 +238,9 @@
                     class="break"
                     class:reveal={(centerPreview || isStage) && item?.lineReveal && revealed < i}
                     class:smallFontSize={smallFontSize || customFontSize || textAnimation.includes("font-size")}
-                    style="{style ? lineStyle : ''}{style ? line.align : ''}{listStyle}"
+                    style="{style ? lineStyle : ''}{style ? line.align : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled
+                        ? `color: ${getStyles(line.text[0].style).color || ''};`
+                        : ''}"
                 >
                     {#each line.text || [] as text, ti}
                         {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}

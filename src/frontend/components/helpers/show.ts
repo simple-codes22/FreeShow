@@ -1,24 +1,32 @@
 import { get } from "svelte/store"
 import type { Item, Show, ShowList, Shows, Slide, TrimmedShow, TrimmedShows } from "../../../types/Show"
-import { activeShow, cachedShowsData, customMetadata, dictionary, groupNumbers, groups, shows, showsCache, sorted, sortedShowsList, stageShows } from "../../stores"
-import { clone, keysToID, removeValues, sortByName, sortByNameAndNumber } from "./array"
+import { cachedShowsData, customMetadata, dictionary, groupNumbers, groups, shows, showsCache, sorted, sortedShowsList } from "../../stores"
+import { translateText } from "../../utils/language"
+import { clone, keysToID, removeValues, sortByName } from "./array"
 import { GetLayout } from "./get"
 import { history } from "./history"
 import { _show } from "./shows"
 
 // check if name exists and add number
 export function checkName(name = "", showId = "") {
-    if (!name || typeof name !== "string") name = get(dictionary).main?.unnamed || "Unnamed"
+    if (!name || typeof name !== "string") name = translateText("main.unnamed")
     name = formatToFileName(name)
 
+    // if ID exists, check the name if different
+    if (showId && get(shows)[showId]) {
+        if (get(shows)[showId]?.name !== name) return checkName(name)
+        return name
+    }
+
     let number = 1
-    while (Object.entries(get(shows)).find(([id, a]) => (!showId || showId !== id) && a.name?.toLowerCase() === (number > 1 ? name.toLowerCase() + " " + number : name.toLowerCase()))) number++
+    while (Object.values(get(shows)).find((a) => a.name?.toLowerCase() === (number > 1 ? name.toLowerCase() + " " + number : name.toLowerCase()))) number++
 
     // add number if existing name, and trim away spaces from the start/end
     return (number > 1 ? name + " " + number : name).trim()
 }
 
 export function formatToFileName(name = "") {
+    name = name.replaceAll(":", ",")
     // remove illegal file name characters
     name = name.trim().replace(/[/\\?%*:|"<>╠]/g, "")
     // max 255 length
@@ -67,6 +75,8 @@ export function getGlobalGroup(group: string, returnInputIfNull = false): string
 
 // get group number (dynamic counter)
 export function getGroupName({ show, showId }: { show: Show; showId: string }, slideID: string, groupName: string | null, layoutIndex: number, addHTML = false, layoutNumber = true) {
+    if (groupName === ".") return "." // . as name will be hidden
+
     let name = groupName
     if (name === null) return name // child slide
 
@@ -98,18 +108,6 @@ export function getGroupName({ show, showId }: { show: Show; showId: string }, s
     return name
 }
 
-// mirror & events
-export function getListOfShows(removeCurrent = false) {
-    let list = Object.entries(get(shows)).map(([id, show]) => ({ id, name: show.name }))
-    if (removeCurrent) list = list.filter((a) => a.id !== get(activeShow)?.id)
-    list = sortByName(list)
-    return list
-}
-
-export function getStageList() {
-    return Object.entries(clone(get(stageShows))).map(([id, stage]) => ({ id, name: stage.name }))
-}
-
 // meta
 export function initializeMetadata({ number = "", title = "", artist = "", author = "", composer = "", publisher = "", copyright = "", CCLI = "", year = "", key = "" }) {
     return { number, title, artist, author, composer, publisher, copyright, CCLI, year, key }
@@ -132,11 +130,11 @@ export function getCustomMetadata() {
 }
 
 export const metadataDisplayValues = [
-    { id: "never", name: "$:show_at.never:$" },
-    { id: "first", name: "$:show_at.first:$" },
-    { id: "last", name: "$:show_at.last:$" },
-    { id: "first_last", name: "$:show_at.first_last:$" },
-    { id: "always", name: "$:show_at.always:$" },
+    { id: "never", name: "show_at.never" },
+    { id: "first", name: "show_at.first" },
+    { id: "last", name: "show_at.last" },
+    { id: "first_last", name: "show_at.first_last" },
+    { id: "always", name: "show_at.always" }
 ]
 
 // create new slides
@@ -147,7 +145,7 @@ export function newSlide(data: { items?: Item[]; group?: string; globalGroup?: s
         settings: {},
         notes: "",
         items: [],
-        ...data,
+        ...data
     }
 }
 
@@ -167,11 +165,14 @@ export function updateShowsList(allShows: TrimmedShows) {
         sortedShows = showsList.sort((a, b) => (b.timestamps?.used || b.timestamps?.created) - (a.timestamps?.used || a.timestamps?.created))
     } else {
         // sort by name
-        sortedShows = sortByNameAndNumber(showsList)
+        sortedShows = sortByName(showsList)
         if (sortType === "name_des") sortedShows = sortedShows.reverse()
     }
 
-    const filteredShows: ShowList[] = removeValues(sortedShows, "private", true)
+    // const profile = getAccess("shows")
+    // const hiddenCategories = Object.entries(profile).filter(([_, type]) => type === "none").map(([id]) => id)
+
+    const filteredShows: ShowList[] = removeValues(sortedShows, "private", true) // .filter((a) => !a.category || !hiddenCategories.includes(a.category))
     sortedShowsList.set(filteredShows)
 }
 
@@ -225,7 +226,7 @@ export function updateCachedShow(showId: string, show: Show, layoutId = "") {
     const customId = getShowCacheId(showId, show)
     const template = {
         id: show.settings?.template,
-        slidesUpdated: cachedShowsData[customId]?.template?.slidesUpdated || false,
+        slidesUpdated: cachedShowsData[customId]?.template?.slidesUpdated || false
     }
 
     // sort by order when just one layout

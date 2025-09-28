@@ -1,5 +1,6 @@
 <script lang="ts">
     import { outputs } from "../../stores"
+    import { throttle } from "../../utils/common"
     import { DEFAULT_BOUNDS, getActiveOutputs, getOutputResolution, getStageResolution } from "../helpers/output"
     import { getRadius, moveBox, resizeBox, rotateBox } from "./textbox"
 
@@ -22,10 +23,12 @@
 
         // TODO: move multiple!
 
-        let moveCondition: boolean = mouse.e.target.closest(".line") || ((!mouse.e.target.closest(".edit") || notTextBox || mouse.e.altKey) && !mouse.e.target.closest(".square")) || mouse.e.ctrlKey || mouse.e.metaKey || mouse.e.buttons === 4
+        let control = mouse.e.ctrlKey || mouse.e.metaKey
+        let moveCondition: boolean =
+            mouse.e.target.closest(".line") || ((!mouse.e.target.closest(".edit") || notTextBox || mouse.e.altKey) && !mouse.e.target.closest(".square")) || (control && !mouse.e.target.closest(".square")) || mouse.e.buttons === 4
 
-        let square = e.shiftKey
-        if (mouse.item.type === "icon") square = true
+        let keepAspectRatio = e.shiftKey
+        const square = mouse.item.type === "icon"
 
         if (mouse.e.target.closest(".rotate")) {
             let rotation = rotateBox(e, mouse, ratio)
@@ -38,7 +41,7 @@
             styles = moved.styles
             lines = moved.lines
         } else if (mouse.e.target.closest(".square")) {
-            styles = resizeBox(e, mouse, square, ratio)
+            styles = resizeBox(e, mouse, keepAspectRatio, ratio, control, square)
             if (!e.altKey) {
                 const moved = moveBox(e, mouse, ratio, active, lines, styles)
                 styles = moved.styles
@@ -65,7 +68,7 @@
             styles[key] = Number(styles[key]).toFixed(2) + "px"
         })
 
-        newStyles = styles
+        throttle("EDIT_ITEM_MOVE", styles, (value) => (newStyles = value), 50)
     }
 
     function mouseup() {

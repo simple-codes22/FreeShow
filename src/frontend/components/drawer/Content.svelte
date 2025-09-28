@@ -54,7 +54,7 @@
     {/if}
 
     {#if id === "shows"}
-        <Shows {id} {active} {searchValue} bind:firstMatch />
+        <Shows {active} {searchValue} bind:firstMatch />
     {:else if id === "media"}
         <Media {active} {searchValue} bind:streams />
     {:else if id === "audio"}
@@ -82,11 +82,15 @@
 
 <style>
     .main {
+        position: relative;
+
         overflow-y: auto;
+
         display: flex;
         flex-direction: column;
-        background-color: var(--primary-darker);
         flex: 1;
+
+        background-color: var(--primary-darker);
     }
 
     .warning {

@@ -107,13 +107,13 @@
             <Icon id="refresh" size={1.1} />
         </Button>
     {:else}
-        <Button on:click={playCurrent} title={$dictionary.preview?._start + " [Space]"} disabled={$outLocked || !shouldPlay || ($activePage === "edit" && $activeEdit.type === "effect")} center>
+        <Button on:click={playCurrent} title={$dictionary.preview?._start + " [Space]"} disabled={$outLocked || !shouldPlay || ($activePage === "edit" && ($activeEdit.type === "template" || $activeEdit.type === "effect"))} center>
             <Icon id="play" size={1.2} white />
         </Button>
     {/if}
 
     <Button on:click={() => outLocked.set(!$outLocked)} red={$outLocked} title={($outLocked ? $dictionary.preview?._unlock : $dictionary.preview?._lock) + " [Ctrl+L]"} center>
-        <Icon id={$outLocked ? "locked" : "unlocked"} size={1.1} />
+        <Icon id={$outLocked ? "locked" : "unlocked"} size={1.1} white={$outLocked} />
     </Button>
     <Button on:click={() => activePopup.set("transition")} title={$dictionary.popup?.transition} center>
         <Icon size={1.2} id="transition" white={!!customTransition} />
@@ -130,6 +130,6 @@
         flex-grow: 1;
         /* height: 40px; */
 
-        padding: 0.2em 0.8em !important;
+        padding: 0.4em 0.8em !important;
     }
 </style>

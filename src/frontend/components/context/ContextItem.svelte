@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { cameraManager } from "../../media/cameraManager"
     import {
         actions,
         activeEdit,
@@ -6,17 +7,20 @@
         activeRecording,
         activeShow,
         categories,
+        colorbars,
         disabledServers,
         drawerTabsData,
         effects,
         effectsLibrary,
         events,
         forceClock,
+        livePrepare,
         media,
         os,
         outputs,
         overlayCategories,
         overlays,
+        projects,
         redoHistory,
         scriptures,
         selected,
@@ -56,7 +60,7 @@
         view_list: () => ($slidesOptions.mode === "list" ? (enabled = true) : ""),
         view_lyrics: () => ($slidesOptions.mode === "lyrics" ? (enabled = true) : ""),
         rename: () => {
-            hide = !!$shows[$selected.data[0]?.id]?.locked
+            disabled = !!$shows[$selected.data[0]?.id]?.locked // hide
         },
         delete: () => {
             hide = !!$shows[$selected.data[0]?.id]?.locked
@@ -66,7 +70,7 @@
             if (!show) return
 
             enabled = !!show.private
-            hide = !!(!enabled && show.locked)
+            disabled = !!(!enabled && show.locked) // hide
         },
         use_as_archive: () => {
             const categoryStores = {
@@ -77,6 +81,11 @@
 
             const isArchive = !!categoryStores[$selected.id || ""]?.()[$selected.data[0]]?.isArchive
             enabled = isArchive
+        },
+        archive: () => {
+            const projectId = $selected.data?.[0]?.id
+            let project = $projects[projectId]
+            enabled = !!project.archived
         },
         edit: () => {
             if ($selected.id !== "show_drawer" || !$shows[$selected.data[0]?.id]?.locked) return
@@ -181,13 +190,14 @@
 
             disabled = true
         },
-        createCollection: () => {
-            let selectedBibles = $selected.data.map((id) => $scriptures[id]).filter((a) => !a?.collection)
-            if (selectedBibles.length < 2) disabled = true
-        },
         favourite: () => {
-            let path = $selected.data[0]?.path || $selected.data[0]?.id
-            if (path && $media[path]?.favourite === true) enabled = true
+            if ($selected.id?.includes("category_scripture")) {
+                let id = $selected.data[0]
+                enabled = !!$scriptures[id]?.favorite
+            } else {
+                let path = $selected.data[0]?.path || $selected.data[0]?.id
+                enabled = !!$media[path]?.favourite
+            }
         },
         effects_library_add: () => {
             // WIP don't show this if not an effect
@@ -198,6 +208,11 @@
 
             enabled = isEnabled
             menu.label = isEnabled ? "media.effects_library_remove" : "media.effects_library_add"
+        },
+        startup_activate: () => {
+            const startupCameras = cameraManager.getStartupCameras()
+            const camId = $selected.data[0]?.id
+            enabled = camId && startupCameras.includes(camId)
         },
         lock_to_output: () => {
             let id = $selected.data[0]
@@ -214,11 +229,21 @@
                 else if ($overlays[id]?.displayDuration) enabled = true
             }
         },
+        toggle_output: () => {
+            let outputId = contextElem?.id || ""
+            disabled = !!$outputs[outputId]?.invisible
+        },
         move_to_front: () => {
-            let previewOutputs = keysToID($outputs).filter((a) => a.enabled && !a.isKeyOutput)
+            let previewOutputs = keysToID($outputs).filter((a) => a.enabled) //  && !a.invisible
             // WIP check currently selected against the other outputs...
             if (previewOutputs.length !== 2) {
                 disabled = false
+                return
+            }
+
+            let outputId = contextElem?.id || ""
+            if ($outputs[outputId]?.invisible) {
+                disabled = true
                 return
             }
 
@@ -234,6 +259,14 @@
 
             enabled = isEnabled
             menu.label = isEnabled ? "context.enable_preview" : "context.hide_from_preview"
+        },
+        test_pattern: () => {
+            const outputId = contextElem?.id || ""
+            enabled = !!$colorbars[outputId]
+        },
+        live_prepare: () => {
+            const outputId = contextElem?.id || ""
+            enabled = !!$livePrepare[outputId]
         },
         place_under_slide: () => {
             let id = $selected.data[0]
@@ -281,7 +314,10 @@
     }
 
     function keydown(e: KeyboardEvent) {
-        if (e.key === "Enter") contextItemClick()
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            contextItemClick()
+        }
     }
 
     let shortcut = ""
@@ -289,16 +325,17 @@
     function getShortcuts() {
         // WIP multiple
         let s = menu.shortcuts![0]
-        if ($os.platform === "darwin") s.replaceAll("Ctrl", "Cmd")
+        if ($os.platform === "darwin") s = s.replaceAll("Ctrl", "Cmd") // .replaceAll("Alt", "Option")
         shortcut = s
     }
 
     $: customStyle = id === "uppercase" ? "text-transform: uppercase;" : id === "lowercase" ? "text-transform: lowercase;" : ""
 </script>
 
-<div on:click={contextItemClick} class:enabled class:disabled class:hide style="color: {menu?.color || 'unset'};font-weight: {menu?.color ? '500' : 'normal'};" tabindex={0} on:keydown={keydown}>
-    <span style="display: flex;align-items: center;gap: 10px;">
-        {#if menu?.icon}<Icon id={menu.icon} />{/if}
+<div on:click={contextItemClick} class:enabled class:disabled class:hide style="color: {menu?.color || 'unset'};font-weight: {menu?.color ? '500' : 'normal'};{menu?.style || ''}" tabindex={0} on:keydown={keydown} role="menuitem">
+    <span style="display: flex;align-items: center;gap: 15px;">
+        <!-- white={menu.icon !== "edit"} -->
+        {#if menu?.icon}<Icon style="opacity: 0.7;color: {(topBar ? '' : menu.iconColor) || 'var(--text)'};" id={menu.icon} white />{/if}
         {#if enabled === true}<Icon id="check" style="fill: var(--text);" size={0.7} white />{/if}
         <p style="display: flex;align-items: center;gap: 5px;{customStyle}">
             {#if menu?.translate === false}
@@ -329,7 +366,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        padding: 5px 20px;
+        padding: 6px 16px;
         cursor: pointer;
     }
     div:hover:not(.disabled) {

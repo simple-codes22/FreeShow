@@ -6,7 +6,9 @@ import { getActiveOutputs } from "../helpers/output"
 import { loadShows } from "../helpers/setShow"
 import { getLayoutRef } from "../helpers/show"
 import { _show } from "../helpers/shows"
+import { variables } from "../../stores"
 import type { API_id_optional, API_slide } from "./api"
+import { keysToID } from "../helpers/array"
 
 export function getShows() {
     return get(shows) as Shows
@@ -100,3 +102,31 @@ export function getSlide(data: API_slide) {
     const slide = slides[data.slideId || Object.keys(slides)[0]]
     return slide || null
 }
+
+export function getVariables() {
+    const variableStore = get(variables)
+
+    // Transform the variables object to an array with the requested fields
+    return Object.entries(variableStore || {}).map(([id, variable]) => ({
+        id,
+        name: variable.name || "",
+        type: variable.type || "number",
+        value: variable.number !== undefined ? variable.number : variable.text || "",
+        text: variable.text || "",
+        enabled: variable.enabled !== false // default to true if not specified
+    }))
+}
+
+export function getVariable(data: { id?: string; name?: string }) {
+    if (data.id && get(variables)[data.id]) {
+        return { id: data.id, ...get(variables)[data.id] }
+    }
+
+    if (data.name) {
+        return keysToID(get(variables)).find(a => a.name === data.name) || null
+    }
+
+    return null
+}
+
+

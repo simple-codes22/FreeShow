@@ -2,30 +2,28 @@ import { get } from "svelte/store"
 import { OUTPUT } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import type { ErrorLog } from "../../types/Main"
-import { keysToID, removeDuplicates, sortByName } from "../components/helpers/array"
-import { getActiveOutputs } from "../components/helpers/output"
+import { removeDuplicates } from "../components/helpers/array"
+import { getContrast } from "../components/helpers/color"
+import { getActiveOutputs, toggleOutputs } from "../components/helpers/output"
 import { sendMain } from "../IPC/main"
 import {
-    activeDrawerTab,
-    activeEdit,
-    activePage,
-    activeShow,
     activeTriggerFunction,
-    allOutputs,
     autosave,
     currentWindow,
     disabledServers,
     drawer,
-    errorHasOccured,
+    errorHasOccurred,
     focusedArea,
     os,
-    outputDisplay,
     outputs,
     quickSearchActive,
     resized,
     serverData,
+    special,
+    theme,
+    themes,
     toastMessages,
-    version,
+    version
 } from "../stores"
 import { convertAutosave } from "../values/autosave"
 import { send } from "./request"
@@ -77,15 +75,8 @@ export async function waitUntilValueIsDefined(value: () => any, intervalTime = 5
 }
 
 // hide output window
-export function hideDisplay(ctrlKey = true) {
-    if (!ctrlKey) return
-    outputDisplay.set(false)
-
-    const outputsList = getActiveOutputs(get(allOutputs), false)
-    outputsList.forEach((id) => {
-        const output = { id, ...get(allOutputs)[id] }
-        send(OUTPUT, ["DISPLAY"], { enabled: false, output })
-    })
+export function hideDisplay() {
+    toggleOutputs(null, { state: false })
 }
 
 export function mainClick(e: any) {
@@ -107,7 +98,7 @@ export function focusArea(e: any) {
 
 // auto save
 let autosaveTimeout: NodeJS.Timeout | null = null
-export let previousAutosave: number = 0
+export let previousAutosave = 0
 export function startAutosave() {
     if (get(currentWindow)) return
     if (autosaveTimeout) clearTimeout(autosaveTimeout)
@@ -123,14 +114,6 @@ export function startAutosave() {
         save(false, { autosave: true })
         startAutosave()
     }, saveInterval)
-}
-
-// get dropdown list
-export function getList(object: any, addEmptyValue = false) {
-    let list = sortByName(keysToID(object))
-    if (addEmptyValue) list = [{ id: null, name: "—" }, ...list]
-
-    return list
 }
 
 // error logger
@@ -155,22 +138,19 @@ export function logerror(err) {
         time: new Date(),
         os: get(os).platform || "Unknown",
         version: get(version),
-        active: { window: get(currentWindow) || "main", page: get(activePage), show: get(activeShow), edit: get(activeEdit) },
-        drawer: { active: get(drawer)?.height > 40 ? get(activeDrawerTab) : "CLOSED" },
-        // lastUndo: get(undoHistory)[get(undoHistory).length - 1],
         type: err.type,
         source: err.type === "unhandledrejection" ? "See stack" : `${err.filename} - ${err.lineno}:${err.colno}`,
         message: msg,
         stack: err.reason?.stack || err.error?.stack,
     }
 
-    errorHasOccured.set(true) // always show close popup if this has happened (so the user can choose to not save)
+    errorHasOccurred.set(true) // always show close popup if this has happened (so the user can choose to not save)
     sendMain(Main.LOG_ERROR, log)
 }
 
 // stream to OutputShow
 export function toggleRemoteStream() {
-    if (get(currentWindow)) return
+    if (get(currentWindow) || get(special).optimizedMode) return
 
     const value = { key: "server", value: false }
     let captureOutputId = get(serverData)?.output_stream?.outputId
@@ -222,4 +202,48 @@ export function triggerFunction(id: string) {
     setTimeout(() => {
         activeTriggerFunction.set("")
     }, 100)
+}
+
+// get theme contrast color
+// WIP similar to "secondary" in App.svelte
+export function isDarkTheme() {
+    const contrastColor = getContrast(get(themes)[get(theme)]?.colors?.primary || "")
+    return contrastColor === "#FFFFFF"
+}
+
+const throttled: { [key: string]: any } = {}
+export function throttle(id: string, value: any, callback: (v: any) => void, maxUpdatesPerSecond: number) {
+    // value = clone(value)
+
+    if (throttled[id] !== undefined) {
+        throttled[id] = value
+        return
+    }
+
+    callback(value)
+    throttled[id] = "WAITING"
+
+    setTimeout(() => {
+        if (throttled[id] !== "WAITING") callback(throttled[id])
+        delete throttled[id]
+    }, 1000 / maxUpdatesPerSecond)
+}
+
+const limited: Record<string, { timeout: NodeJS.Timeout; pending: ((v: boolean) => void) }> = {}
+export function hasNewerUpdate(id: string, maxUpdatesMs = 0): Promise<boolean> {
+    // resolve any existing updates as false as there is a newer one
+    if (limited[id]) {
+        clearTimeout(limited[id].timeout)
+        limited[id].pending(true)
+    }
+
+    return new Promise((resolve) => {
+        limited[id] = {
+            timeout: setTimeout(() => {
+                delete limited[id]
+                resolve(false)
+            }, maxUpdatesMs),
+            pending: resolve,
+        }
+    })
 }

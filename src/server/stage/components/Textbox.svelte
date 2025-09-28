@@ -10,6 +10,7 @@
     import { dictionary, updateTransposed, variables } from "../util/stores"
     import { getDynamicValue, replaceDynamicValues } from "../helpers/show"
     import { send } from "../util/socket"
+    import { createVirtualBreaks } from "../../common/util/show"
 
     export let showId: string
     export let item: Item
@@ -32,7 +33,7 @@
     // custom dynamic size
     let newSizes = `;
     top: ${Math.min(itemStyles.top, (itemStyles.top / 1080) * resolution.height)}px;
-    inset-inline-start: ${Math.min(itemStyles.left, (itemStyles.left / 1920) * resolution.width)}px;
+    left: ${Math.min(itemStyles.left, (itemStyles.left / 1920) * resolution.width)}px;
     width: ${Math.min(itemStyles.width, (itemStyles.width / 1920) * resolution.width)}px;
     height: ${Math.min(itemStyles.height, (itemStyles.height / 1080) * resolution.height)}px;
   `
@@ -63,7 +64,15 @@
         if (loopStop || !alignElem || !autoSize) return
         loopStop = setTimeout(() => (loopStop = null), 200)
 
-        let type: AutosizeTypes = "growToFit"
+        let type = item?.textFit || "shrinkToFit"
+        let defaultFontSize
+        let maxFontSize
+
+        if (stageItem?.type !== "text") type = stageItem?.textFit || "growToFit"
+        let itemFontSize = Number(getStyles(stageItem?.style, true)?.["font-size"] || "") || 100
+        defaultFontSize = itemFontSize
+        if (type === "growToFit" && itemFontSize !== 100) maxFontSize = itemFontSize
+
         let textQuery = ""
         if ((item.type || "text") === "text") {
             // elem = elem.querySelector(".align")
@@ -73,7 +82,7 @@
             if (item.type === "slide_tracker") textQuery = ".progress div"
         }
 
-        fontSize = autosize(alignElem, { type, textQuery })
+        fontSize = autosize(alignElem, { type, textQuery, defaultFontSize, maxFontSize })
     }
 
     // CHORDS
@@ -231,7 +240,11 @@
     const dynamicInterval = setInterval(() => {
         updateDynamic++
     }, 1000)
-    onDestroy(() => clearInterval(dynamicInterval))
+    onDestroy(() => {
+        clearInterval(dynamicInterval)
+        if (eventTimeout) clearTimeout(eventTimeout)
+        if (blockTimeout) clearTimeout(blockTimeout)
+    })
 
     $: chordFontSize = chordLines.length ? (stageItem?.chords?.size || stageItem?.chordsData?.size || 60) * 0.65 : 0
     $: chordsStyle = `--chord-size: ${chordLines.length ? fontSize * (chordFontSize / 100) : "undefined"}px;--chord-color: ${stageItem?.chords?.color || stageItem?.chordsData?.color || "#FF851B"};`
@@ -244,6 +257,145 @@
     function release() {
         if (!item.button?.release) return
         send("RUN_ACTION", { id: item.button.release })
+    }
+
+    // Event deduplication variables
+    let lastEventType: string = ""
+    let eventTimeout: NodeJS.Timeout | null = null
+    let isEventBlocked: boolean = false
+    let blockTimeout: NodeJS.Timeout | null = null
+
+    // Detect mobile browsers that fire both touch and pointer events
+    const isMobileBrowser = typeof navigator !== "undefined" && (/Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || /SamsungBrowser/i.test(navigator.userAgent))
+
+    function clearEventType() {
+        lastEventType = ""
+    }
+
+    function setEventType(type: string) {
+        lastEventType = type
+        if (eventTimeout) clearTimeout(eventTimeout)
+        // Clear the event type after a short delay to allow for proper event handling
+        eventTimeout = setTimeout(clearEventType, 200)
+    }
+
+    function blockEvents() {
+        isEventBlocked = true
+        if (blockTimeout) clearTimeout(blockTimeout)
+        // Block events for a shorter period - just enough to prevent double-firing
+        blockTimeout = setTimeout(() => {
+            isEventBlocked = false
+        }, 100)
+    }
+
+    // Touch event handlers for mobile browsers (iOS Safari, Android Chrome, Samsung Internet, etc.)
+    function handleTouchStart(e: TouchEvent) {
+        // Block if events are currently blocked or wrong event type
+        if (isEventBlocked || (lastEventType && lastEventType !== "touch")) return
+
+        setEventType("touch")
+
+        // Only handle press/release actions
+        if (item.button?.press || item.button?.release) {
+            // Prevent default only for press/release actions to stop ghost clicks
+            if (isMobileBrowser) {
+                e.preventDefault()
+                e.stopPropagation()
+            }
+            blockEvents() // Block rapid-fire events
+            press()
+        }
+        // For transpose/click actions, don't prevent default - let click events bubble
+    }
+
+    function handleTouchEnd(e: TouchEvent) {
+        // Only handle if we're in a touch sequence
+        if (lastEventType !== "touch") return
+
+        // Only handle press/release actions
+        if (item.button?.press || item.button?.release) {
+            // Prevent default only for press/release actions
+            if (isMobileBrowser) {
+                e.preventDefault()
+                e.stopPropagation()
+            }
+            release()
+        }
+        // For transpose/click actions, don't prevent default - let click events bubble
+    }
+
+    // Mouse event handlers for desktop compatibility (fallback for older browsers)
+    function handleMouseDown() {
+        // Skip on mobile or if wrong event type or events blocked
+        if (isMobileBrowser || isEventBlocked || lastEventType === "pointer" || lastEventType === "touch") return
+
+        setEventType("mouse")
+        if (item.button?.press || item.button?.release) {
+            blockEvents()
+            press()
+        }
+    }
+
+    function handleMouseUp() {
+        // Only handle if we're in a mouse sequence and not mobile
+        if (isMobileBrowser || lastEventType !== "mouse") return
+
+        if (item.button?.press || item.button?.release) {
+            release()
+        }
+    }
+
+    // Pointer event handlers for modern browsers (preferred for desktop)
+    function handlePointerDown(e: PointerEvent) {
+        // Block if events are blocked
+        if (isEventBlocked) return
+
+        // On mobile, completely ignore pointer events if we have touch events
+        if (isMobileBrowser) {
+            if (e.pointerType === "touch") return // Touch events handle this
+            // For non-touch pointer events on mobile (stylus, etc.)
+            if (lastEventType === "touch") return
+        }
+
+        if (e.pointerType === "touch") {
+            if (lastEventType === "touch") return
+            setEventType("touch")
+        } else {
+            if (lastEventType === "mouse" || lastEventType === "touch") return
+            setEventType("pointer")
+        }
+
+        if (item.button?.press || item.button?.release) {
+            blockEvents()
+            press()
+        }
+    }
+
+    function handlePointerUp(e: PointerEvent) {
+        // On mobile, ignore pointer events completely
+        if (isMobileBrowser && e.pointerType === "touch") return
+
+        if (e.pointerType === "touch" && lastEventType !== "touch") return
+        if (e.pointerType !== "touch" && lastEventType !== "pointer") return
+
+        if (item.button?.press || item.button?.release) {
+            release()
+        }
+    }
+
+    // Keyboard event handler for accessibility
+    function handleKeyDown(e: KeyboardEvent) {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            press()
+        }
+    }
+
+    function handleKeyUp(e: KeyboardEvent) {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            release()
+        }
     }
 </script>
 
@@ -259,8 +411,16 @@
     class:clickable={item.button?.press || item.button?.release}
     class:reveal={item.clickReveal && !clickRevealed}
     on:click={toggleActions}
-    on:pointerdown={press}
-    on:pointerup={release}
+    on:keydown={handleKeyDown}
+    on:keyup={handleKeyUp}
+    on:pointerdown={handlePointerDown}
+    on:pointerup={handlePointerUp}
+    on:touchstart={handleTouchStart}
+    on:touchend={handleTouchEnd}
+    on:mousedown={handleMouseDown}
+    on:mouseup={handleMouseUp}
+    role="button"
+    tabindex={item.button?.press || item.button?.release ? 0 : -1}
 >
     <!-- can have more actions here if needed -->
     {#if actionButtons && (chordLines.length || false)}
@@ -279,7 +439,7 @@
     {#if item.lines}
         <div class="align" style={style ? item.align : null} bind:this={alignElem}>
             <div class="lines" style="{style ? lineStyleBox : ''}{chordsStyle}">
-                {#each item.lines as line, i}
+                {#each createVirtualBreaks(item.lines) as line, i}
                     {#if !maxLines || i < maxLines}
                         <!-- WIP chords are way bigger than stage preview for some reason -->
                         {#if chordLines[i]}
@@ -371,15 +531,25 @@
     .clickable {
         cursor: pointer;
         user-select: none;
+        touch-action: manipulation; /* Optimizes touch interactions */
+        -webkit-touch-callout: none; /* Prevents iOS callout menu */
+        -webkit-user-select: none; /* Additional iOS user-select prevention */
     }
     .clickable:active {
         filter: brightness(0.8);
     }
 
+    /* iOS Safari specific optimizations */
+    @supports (-webkit-touch-callout: none) {
+        .clickable {
+            -webkit-tap-highlight-color: transparent; /* Removes tap highlight */
+        }
+    }
+
     .actions {
         position: absolute;
         bottom: 0;
-        inset-inline-start: 50%;
+        left: 50%;
         /* transform: translate(-50%, 100%); */
         transform: translateX(-50%);
 

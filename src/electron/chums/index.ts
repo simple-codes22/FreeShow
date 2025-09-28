@@ -5,10 +5,6 @@ import { ChumsExport } from "./ChumsExport"
 import { ChumsImport } from "./ChumsImport"
 import type { ChumsScopes } from "./types"
 
-export function chumsConnect(scope: ChumsScopes) {
-    return ChumsConnect.connect(scope)
-}
-
 export function chumsDisconnect(scope?: ChumsScopes) {
     return ChumsConnect.disconnect(scope)
 }
@@ -19,7 +15,7 @@ export function chumsLoadServices() {
 
 export function chumsStartupLoad(scope: ChumsScopes = "plans", data: MainSendPayloads[Main.CHUMS_STARTUP_LOAD]) {
     if (!stores.ACCESS.get(`chums_${scope}`)) return
-    ChumsConnect.connect(scope).then(async (connected) => {
+    ChumsConnect.connect(scope).then((connected) => {
         if (!connected) return
         ChumsExport.sendSongsToChums(data)
         ChumsImport.loadServices()

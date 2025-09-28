@@ -17,13 +17,15 @@ export const languages = {
     tr: "Türkçe", // Turkish
     fr_FR: "Français", // French
     ru: "Русский", // Russian
-    ko: "한국인", // Korean
+    ko: "한국어", // Korean
     nl: "Nederlands", // Dutch
     zh_CN: "简体中文", // Chinese (Simplified)
     ro: "Română", // Romanian
     cs_CZ: "Čeština", // Czech (Czech Republic)
     fi: "Suomi", // Finnish
     ar: "العربية", // Arabic
+    lt: "Lietuvių kalba", // Lithuanian
+    pt_PT: "Português" // Portuguese
 }
 
 // Help: https://developers.google.com/search/docs/advanced/crawling/localized-versions#language-codes
@@ -55,6 +57,8 @@ export const replace = {
     cs_CZ: ["cs-CZ", "cz", "cs"],
     fi: ["fi"],
     ar: ["ar"],
+    lt: ["lt"],
+    pt_PT: ["pt-PT"],
 }
 
 export const languageFlags = {
@@ -82,4 +86,6 @@ export const languageFlags = {
     cs_CZ: "🇨🇿",
     fi: "🇫🇮",
     ar: "🇪🇬",
+    lt: "🇱🇹",
+    pt_PT: "🇵🇹",
 }

@@ -8,12 +8,13 @@ import { sendMain } from "../../IPC/main"
 import { transposeText } from "../../utils/chordTranspose"
 import { triggerFunction } from "../../utils/common"
 import { syncDrive } from "../../utils/drive"
+import { togglePlayingMedia } from "../../utils/shortcuts"
 import { pcoSync } from "../../utils/startup"
 import { updateTransition } from "../../utils/transitions"
 import { startMetronome } from "../drawer/audio/metronome"
 import { pauseAllTimers } from "../drawer/timers/timers"
 import { getSlideThumbnail, getThumbnail } from "../helpers/media"
-import { changeStageOutputLayout, displayOutputs, startCamera, startScreen, toggleOutput } from "../helpers/output"
+import { changeStageOutputLayout, startCamera, startScreen, toggleOutput, toggleOutputs } from "../helpers/output"
 import { activateTriggerSync, changeOutputStyle, nextSlideIndividual, playSlideTimers, previousSlideIndividual, randomSlide, replaceDynamicValues, selectProjectShow, sendMidi, startShowSync } from "../helpers/showActions"
 import { playSlideRecording } from "../helpers/slideRecording"
 import { startTimerById, startTimerByName, stopTimers } from "../helpers/timerTick"
@@ -37,12 +38,15 @@ import {
     getShow,
     getShowLayout,
     getShows,
-    getSlide
+    getSlide,
+    getVariable,
+    getVariables
 } from "./apiGet"
 import {
     addGroup,
     addToProject,
     audioSeekTo,
+    changeDrawZoom,
     changeShowLayout,
     changeVariable,
     createProject,
@@ -52,9 +56,12 @@ import {
     getPDFThumbnails,
     getPlainText,
     getShowGroups,
+    getTimersDetailed,
     gotoGroup,
     moveStageConnection,
     pauseAudio,
+    pauseTimerById,
+    pauseTimerByName,
     playAudio,
     playMedia,
     rearrangeGroups,
@@ -75,6 +82,8 @@ import {
     startPlaylistByName,
     startScripture,
     stopAudio,
+    stopTimerById,
+    stopTimerByName,
     timerSeekTo,
     toggleLock,
     updateVolumeValues,
@@ -110,7 +119,6 @@ interface API {
 type API_id = { id: string }
 export type API_id_optional = { id?: string }
 type API_index = { index: number }
-type API_boolval = { value?: boolean }
 type API_strval = { value: string }
 type API_volume = { volume?: number; gain?: number } // no values will mute/unmute
 export type API_id_index = { id: string; index: number }
@@ -126,10 +134,12 @@ export type API_media = { path: string; index?: number; data?: any }
 export type API_scripture = { id?: string; reference: string }
 export type API_toggle = { id: string; value?: boolean }
 export type API_stage_output_layout = { outputId?: string; stageLayoutId: string }
-export type API_output_style = { outputStyle?: string; styleOutputs?: any }
+export type API_output_style = { outputId?: string; styleId?: string }
+export type API_output_lock = { value?: boolean; outputId?: string }
 export type API_camera = { name?: string; id: string; groupId?: string }
 export type API_screen = { name?: string; id: string }
 export type API_dynamic_value = { value: string; ref?: any }
+export type API_draw_zoom = { size?: number; x?: number; y?: number }
 export type API_edit_timer = { id: string; key: string; value: any }
 export type API_transition = {
     id?: "text" | "media" // default: "text"
@@ -142,10 +152,11 @@ export type API_variable = {
     name?: string
     index?: number
     // no values will toggle on/off:
-    key?: "text" | "number" | "random_number" | "value" | "enabled" | "step" | "name" | "type" | "increment" | "decrement" | "randomize" | "reset" // default: "enabled"
+    key?: "text" | "number" | "random_number" | "text_set" | "value" | "enabled" | "step" | "name" | "type" | "increment" | "decrement" | "expression" | "randomize" | "reset" | "next" | "previous" // default: "enabled"
     value?: string | number | boolean
     variableAction?: "increment" | "decrement"
 }
+
 export interface API_midi extends MidiValues {
     type: "noteon" | "noteoff" | "control"
     defaultValues?: boolean // only used by actions
@@ -233,6 +244,7 @@ export const API_ACTIONS = {
     start_camera: (data: API_camera) => startCamera(data),
     start_screen: (data: API_screen) => startScreen(data),
     play_media: (data: API_media) => playMedia(data),
+    toggle_playing_media: () => togglePlayingMedia(),
     video_seekto: (data: API_seek) => videoSeekTo(data), // BC
     // play / pause playing
 
@@ -248,12 +260,12 @@ export const API_ACTIONS = {
     scripture_previous: () => triggerFunction("scripture_previous"), // BC
 
     // OUTPUT
-    lock_output: (data: API_boolval) => toggleLock(data.value), // BC
-    toggle_output_windows: () => displayOutputs(), // BC
+    lock_output: (data: API_output_lock) => toggleLock(data), // BC
+    toggle_output_windows: () => toggleOutputs(), // BC
     toggle_output: (data: API_id) => toggleOutput(data.id),
     // WIP disable stage ?
     // WIP disable NDI ?
-    id_select_output_style: (data: API_id) => changeOutputStyle({ outputStyle: data.id }), // BC
+    id_select_output_style: (data: API_id) => changeOutputStyle({ styleId: data.id }), // BC
     change_output_style: (data: API_output_style) => changeOutputStyle(data),
     change_stage_output_layout: (data: API_stage_output_layout) => changeStageOutputLayout(data),
     change_transition: (data: API_transition) => updateTransition(data), // BC
@@ -282,10 +294,17 @@ export const API_ACTIONS = {
     stop_timers: () => stopTimers(), // BC
     timer_seekto: (data: API_seek) => timerSeekTo(data), // BC
     edit_timer: (data: API_edit_timer) => editTimer(data),
+    id_pause_timer: (data: API_id) => pauseTimerById(data.id),
+    name_pause_timer: (data: API_strval) => pauseTimerByName(data.value),
+    id_stop_timer: (data: API_id) => stopTimerById(data.id),
+    name_stop_timer: (data: API_strval) => stopTimerByName(data.value),
 
     // FUNCTIONS
     change_variable: (data: API_variable) => changeVariable(data), // BC
     start_trigger: (data: API_id) => activateTriggerSync(data.id),
+
+    // DRAW
+    change_draw_zoom: (data: API_draw_zoom) => changeDrawZoom(data),
 
     // CONNECTION
     sync_drive: () => syncDrive(true),
@@ -336,6 +355,11 @@ export const API_ACTIONS = {
     get_playing_audio_time: () => getPlayingAudioTime(),
     get_playing_audio_time_left: () => getPlayingAudioDuration() - getPlayingAudioTime(),
     get_playing_audio_data: () => getPlayingAudioData(),
+
+    get_variables: () => getVariables(),
+    get_variable: (data: { id?: string; name?: string }) => getVariable(data),
+
+    get_timers: () => getTimersDetailed(),
 
     get_playlists: () => getPlaylists(),
     get_playlist: (data: API_id_optional) => getPlayingPlaylist(data),

@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { actions, activePage, activePopup, activeShow, dictionary, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, slideTimers, special, styles } from "../../../stores"
+    import { actions, activePage, activePopup, activeShow, dictionary, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, resized, slideTimers, special } from "../../../stores"
+    import { DEFAULT_WIDTH, isDarkTheme } from "../../../utils/common"
     import { formatSearch } from "../../../utils/search"
     import { previewCtrlShortcuts, previewShortcuts } from "../../../utils/shortcuts"
     import { runAction } from "../../actions/actions"
@@ -11,6 +12,7 @@
     import { getFewestOutputLines, getItemWithMostLines, playNextGroup, updateOut } from "../../helpers/showActions"
     import { _show } from "../../helpers/shows"
     import { newSlideTimer } from "../../helpers/tick"
+    import { getFirstOutputIdWithAudableBackground } from "../../helpers/video"
     import Button from "../../inputs/Button.svelte"
     import ShowActions from "../ShowActions.svelte"
     import Audio from "../tools/Audio.svelte"
@@ -28,14 +30,9 @@
     let currentOutput: any = {}
     $: currentOutput = outputId ? $outputs[outputId] || {} : {}
 
-    $: backgroundOutputId = allActiveOutputs.find((id) => getLayersFromId(id).includes("background")) || outputId
+    $: allOutputsWithBackground = allActiveOutputs.filter((id) => $outputs[id]?.out?.background)
+    $: backgroundOutputId = getFirstOutputIdWithAudableBackground(allOutputsWithBackground) || allOutputsWithBackground[0] || outputId
     $: currentBgOutput = backgroundOutputId ? $outputs[backgroundOutputId] || null : null
-
-    function getLayersFromId(id: string) {
-        const layers = $styles[$outputs[id]?.style || ""]?.layers
-        if (Array.isArray(layers)) return layers
-        return ["background"]
-    }
 
     let numberKeyTimeout: NodeJS.Timeout | null = null
     let previousNumberKey = ""
@@ -205,7 +202,7 @@
     let timer: any = {}
     $: timer = outputId && $slideTimers[outputId] ? $slideTimers[outputId] : {}
     $: Object.entries($outputs).forEach(([id, output]) => {
-        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.keyOutput || output.stageOutput) return
+        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.stageOutput) return
         if (!output.out?.transition || $slideTimers[id]?.timer) return
 
         const data = output.out.transition
@@ -217,7 +214,7 @@
     // LINES
 
     $: outSlide = currentOutput.out?.slide
-    $: ref = outSlide ? (outSlide?.id === "temp" ? [{ temp: true, items: outSlide.tempItems, id: "" }] : _show(outSlide.id).layouts([outSlide.layout]).ref()[0]) : []
+    $: ref = outSlide ? (outSlide?.id === "temp" ? [{ temp: true, items: outSlide.tempItems, id: "" }] : _show(outSlide.id).layouts([outSlide.layout]).ref()[0] || []) : []
     let linesIndex: null | number = null
     let maxLines: null | number = null
     $: amountOfLinesToShow = getFewestOutputLines($outputs)
@@ -235,13 +232,17 @@
     // hide preview in draw page
     // $: enablePreview = ["show", "edit", "settings"].includes($activePage)
     // $: if ($activePage === "draw") enablePreview = false
+
+    const light = !isDarkTheme()
+    $: isOptimized = $special.optimizedMode
+    $: isSplitted = $resized.rightPanel > DEFAULT_WIDTH * 1.8
 </script>
 
 <svelte:window on:keydown={keydown} />
 
 <div id="previewArea" class="main">
     {#if enablePreview}
-        <PreviewOutputs bind:currentOutputId={outputId} />
+        <PreviewOutputs />
 
         <div class="top">
             <Button class="hide" on:click={() => (enablePreview = false)} style="z-index: 2;" title={$dictionary.preview?._hide_preview} center>
@@ -259,24 +260,28 @@
     {/if}
 
     {#if enablePreview}
-        <ShowActions {currentOutput} {ref} {linesIndex} {maxLines} />
+        <div class="section" style="margin-bottom: 2px;" class:float={!isSplitted && $activePage !== "show" && $activePage !== "settings"} class:light class:isOptimized>
+            <ShowActions {currentOutput} {ref} {linesIndex} {maxLines} />
+        </div>
     {/if}
 
     {#if $activePage === "show"}
-        <ClearButtons bind:autoChange activeClear={updatedActiveClear} on:update={(e) => (activeClear = e.detail)} />
+        <div class="section" style="margin-top: 2px;">
+            <ClearButtons bind:autoChange activeClear={updatedActiveClear} on:update={(e) => (activeClear = e.detail)} />
 
-        {#if updatedActiveClear === "background"}
-            <MediaControls currentOutput={currentBgOutput} outputId={backgroundOutputId} />
-        {:else if updatedActiveClear === "slide"}
-            <Show {currentOutput} {ref} {linesIndex} {maxLines} />
-        {:else if updatedActiveClear === "overlays"}
-            <Overlay {currentOutput} />
-        {:else if updatedActiveClear === "audio"}
-            <Audio />
-        {:else if updatedActiveClear === "nextTimer"}
-            <NextTimer {currentOutput} timer={timer?.timer ? timer : { time: 0, paused: true, timer: {} }} />
-            <!-- WIP display overlay timer time -->
-        {/if}
+            {#if updatedActiveClear === "background"}
+                <MediaControls currentOutput={currentBgOutput} outputId={backgroundOutputId} />
+            {:else if updatedActiveClear === "slide"}
+                <Show {currentOutput} {ref} {linesIndex} {maxLines} />
+            {:else if updatedActiveClear === "overlays"}
+                <Overlay {currentOutput} />
+            {:else if updatedActiveClear === "audio"}
+                <Audio />
+            {:else if updatedActiveClear === "nextTimer"}
+                <NextTimer {currentOutput} timer={timer?.timer ? timer : { time: 0, paused: true, timer: {} }} />
+                <!-- WIP display overlay timer time -->
+            {/if}
+        </div>
     {/if}
 </div>
 
@@ -311,5 +316,34 @@
     }
     .top:hover > :global(.hide) {
         opacity: 1;
+    }
+
+    .section {
+        display: flex;
+        flex-direction: column;
+
+        position: relative;
+
+        background-color: var(--primary-darker);
+        border: 1px solid var(--primary-lighter);
+        margin: 5px;
+        border-radius: 10px;
+
+        overflow: hidden;
+
+        transition: transform 0.2s ease;
+    }
+
+    .section.float {
+        position: absolute;
+        width: calc(100% - 10px);
+        transform: translateY(calc(-100% - 9px));
+
+        --background: rgba(25, 25, 35, 0.6);
+        background-color: var(--background);
+        backdrop-filter: blur(3px);
+    }
+    .section.float.light {
+        --background: rgba(225, 225, 225, 0.6);
     }
 </style>

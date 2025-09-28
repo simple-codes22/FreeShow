@@ -14,6 +14,8 @@ import { formatToFileName } from "../helpers/show"
 import { _show } from "../helpers/shows"
 
 export async function exportProject(project: Project, projectId: string) {
+    if (!project) return
+
     const shows: Shows = {}
     let files: string[] = []
     const overlays: Overlays = {}
@@ -101,7 +103,7 @@ export async function exportProject(project: Project, projectId: string) {
     files = [...new Set(files)]
 
     // set data
-    let projectData: any = { project, parentFolder, shows }
+    const projectData: any = { project, parentFolder, shows }
     if (Object.keys(overlays).length) projectData.overlays = overlays
     if (Object.keys(effects).length) projectData.effects = effects
     if (Object.keys(actions).length) projectData.actions = actions

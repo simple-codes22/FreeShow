@@ -1,4 +1,3 @@
-import getFonts from "css-fonts"
 import type { BrowserWindow, DesktopCapturerSource } from "electron"
 import { app, desktopCapturer, screen, shell, systemPreferences } from "electron"
 import { machineIdSync } from "node-machine-id"
@@ -11,11 +10,11 @@ import type { ErrorLog, LyricSearchResult, OS } from "../../types/Main"
 import { setPlayingState, unsetPlayingAudio } from "../audio/nowPlaying"
 import { chumsDisconnect, chumsLoadServices, chumsStartupLoad } from "../chums"
 import { restoreFiles } from "../data/backup"
-import { downloadMedia } from "../data/downloadMedia"
+import { checkIfMediaDownloaded, downloadLessonsMedia, downloadMedia } from "../data/downloadMedia"
 import { importShow } from "../data/import"
 import { save } from "../data/save"
 import { config, error_log, getStore, stores, updateDataPath, userDataPath } from "../data/store"
-import { captureSlide, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
+import { captureSlide, doesMediaExist, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
 import { OutputHelper } from "../output/OutputHelper"
 import { getPresentationApplications, presentationControl, startSlideshow } from "../output/ppt/presentation"
 import { pcoDisconnect, pcoStartupLoad } from "../planningcenter/connect"
@@ -32,6 +31,7 @@ import {
     getDocumentsFolder,
     getFileInfo,
     getFolderContent,
+    getFoldersContent,
     getMediaCodec,
     getMediaTracks,
     getPaths,
@@ -40,7 +40,7 @@ import {
     loadFile,
     loadShows,
     locateMediaFile,
-    openSystemFolder,
+    openInSystem,
     readExifData,
     readFile,
     selectFiles,
@@ -53,6 +53,7 @@ import { closeMidiInPorts, getMidiInputs, getMidiOutputs, receiveMidi, sendMidi 
 import { deleteShows, deleteShowsNotIndexed, getAllShows, getEmptyShows, refreshAllShows } from "../utils/shows"
 import { correctSpelling } from "../utils/spellcheck"
 import checkForUpdates from "../utils/updater"
+import { libreConvert } from "../output/ppt/libreConverter"
 
 export const mainResponses: MainResponses = {
     // DEV
@@ -60,7 +61,7 @@ export const mainResponses: MainResponses = {
     [Main.IS_DEV]: () => !isProd,
     [Main.GET_TEMP_PATHS]: () => getTempPaths(),
     // APP
-    [Main.VERSION]: () => app.getVersion(),
+    [Main.VERSION]: () => getVersion(),
     [Main.GET_OS]: () => getOS(),
     [Main.DEVICE_ID]: () => machineIdSync(),
     [Main.IP]: () => os.networkInterfaces(),
@@ -99,17 +100,16 @@ export const mainResponses: MainResponses = {
         return loadShows(data)
     },
     [Main.AUTO_UPDATE]: () => checkForUpdates(),
-    [Main.GET_SYSTEM_FONTS]: () => loadFonts(),
     [Main.URL]: (data) => openURL(data),
     [Main.LANGUAGE]: (data) => setGlobalMenu(data.strings),
     [Main.GET_PATHS]: () => getPaths(),
     [Main.SHOWS_PATH]: () => getDocumentsFolder(),
     [Main.DATA_PATH]: () => getDocumentsFolder(null, ""),
     [Main.LOG_ERROR]: (data) => logError(data),
-    [Main.OPEN_LOG]: () => openSystemFolder(error_log.path),
-    [Main.OPEN_CACHE]: () => openSystemFolder(getThumbnailFolderPath()),
-    [Main.OPEN_APPDATA]: () => openSystemFolder(path.dirname(config.path)),
-    [Main.OPEN_FOLDER_PATH]: (path) => openSystemFolder(path),
+    [Main.OPEN_LOG]: () => openInSystem(error_log.path),
+    [Main.OPEN_CACHE]: () => openInSystem(getThumbnailFolderPath(), true),
+    [Main.OPEN_APPDATA]: () => openInSystem(path.dirname(config.path), true),
+    [Main.OPEN_FOLDER_PATH]: (folderPath) => openInSystem(folderPath, true),
     [Main.GET_STORE_VALUE]: (data) => getStoreValue(data),
     [Main.SET_STORE_VALUE]: (data) => setStoreValue(data),
     // SHOWS
@@ -124,13 +124,16 @@ export const mainResponses: MainResponses = {
     [Main.GET_DISPLAYS]: () => screen.getAllDisplays(),
     [Main.OUTPUT]: (_, e) => (e.sender.id === getMainWindow()?.webContents.id ? "false" : "true"),
     // MEDIA
+    [Main.DOES_MEDIA_EXIST]: (data) => doesMediaExist(data),
     [Main.GET_THUMBNAIL]: (data) => getThumbnail(data),
     [Main.SAVE_IMAGE]: (data) => saveImage(data),
     [Main.PDF_TO_IMAGE]: (data) => pdfToImage(data),
     [Main.READ_EXIF]: (data) => readExifData(data),
     [Main.MEDIA_CODEC]: (data) => getMediaCodec(data),
     [Main.MEDIA_TRACKS]: (data) => getMediaTracks(data),
-    [Main.DOWNLOAD_MEDIA]: (data) => downloadMedia(data),
+    [Main.DOWNLOAD_LESSONS_MEDIA]: (data) => downloadLessonsMedia(data),
+    [Main.MEDIA_DOWNLOAD]: (data) => downloadMedia(data),
+    [Main.MEDIA_IS_DOWNLOADED]: (data) => checkIfMediaDownloaded(data),
     [Main.NOW_PLAYING]: (data) => setPlayingState(data),
     [Main.NOW_PLAYING_UNSET]: (data) => unsetPlayingAudio(data),
     // [Main.MEDIA_BASE64]: (data) => storeMedia(data),
@@ -139,6 +142,7 @@ export const mainResponses: MainResponses = {
     [Main.ACCESS_MICROPHONE_PERMISSION]: () => getPermission("microphone"),
     [Main.ACCESS_SCREEN_PERMISSION]: () => getPermission("screen"),
     // PPT
+    [Main.LIBREOFFICE_CONVERT]: (data) => libreConvert(data),
     [Main.SLIDESHOW_GET_APPS]: () => getPresentationApplications(),
     [Main.START_SLIDESHOW]: (data) => startSlideshow(data),
     [Main.PRESENTATION_CONTROL]: (data) => presentationControl(data),
@@ -164,7 +168,7 @@ export const mainResponses: MainResponses = {
     [Main.SEARCH_LYRICS]: (data) => searchLyrics(data),
     // FILES
     [Main.RESTORE]: (data) => restoreFiles(data),
-    [Main.SYSTEM_OPEN]: (data) => openSystemFolder(data),
+    [Main.SYSTEM_OPEN]: (data) => openInSystem(data),
     [Main.DOES_PATH_EXIST]: (data) => {
         let configPath = data.path
         if (configPath === "data_config") configPath = path.join(data.dataPath, dataFolderNames.userData)
@@ -183,6 +187,7 @@ export const mainResponses: MainResponses = {
     [Main.BUNDLE_MEDIA_FILES]: (data) => bundleMediaFiles(data),
     [Main.FILE_INFO]: (data) => getFileInfo(data),
     [Main.READ_FOLDER]: (data) => getFolderContent(data),
+    [Main.READ_FOLDERS]: (data) => getFoldersContent(data),
     [Main.READ_FILE]: (data) => ({ content: readFile(data.path) }),
     [Main.OPEN_FOLDER]: (data) => selectFolder(data),
     [Main.OPEN_FILE]: (data) => selectFiles(data),
@@ -232,6 +237,15 @@ export function loadShow(msg: { id: string; path: string | null; name: string })
     return show
 }
 
+function getVersion() {
+    try {
+        return app.getVersion()
+    } catch (err) {
+        console.error("Could not get version:", err)
+        return "0.0.0"
+    }
+}
+
 function getOS() {
     return { platform: os.platform(), name: os.hostname(), arch: os.arch() } as OS
 }
@@ -240,16 +254,6 @@ function getOS() {
 export const openURL = (url: string) => {
     shell.openExternal(url)
     return
-}
-
-async function loadFonts() {
-    try {
-        const fonts = await getFonts()
-        return { fonts }
-    } catch (err) {
-        console.error("Something went wrong when loading fonts.")
-        return { fonts: [] }
-    }
 }
 
 async function searchLyrics({ artist, title }: { artist: string; title: string }) {
@@ -292,13 +296,13 @@ function getScreens(type: "window" | "screen" = "screen"): Promise<{ name: strin
         OutputHelper.getAllOutputs().forEach((output) => {
             if (output.window) windows.push(output.window)
         })
-        ;[mainWindow!, ...windows].forEach((window) => {
-            const mediaId = window?.getMediaSourceId()
-            const windowsAlreadyExists = sources.find((a) => a.id === mediaId)
-            if (windowsAlreadyExists) return
+            ;[mainWindow!, ...windows].forEach((window) => {
+                const mediaId = window?.getMediaSourceId()
+                const windowsAlreadyExists = sources.find((a) => a.id === mediaId)
+                if (windowsAlreadyExists) return
 
-            screens.push({ name: window?.getTitle(), id: mediaId })
-        })
+                screens.push({ name: window?.getTitle(), id: mediaId })
+            })
 
         return screens
     }
@@ -315,7 +319,7 @@ export function saveRecording(_: Electron.IpcMainEvent, msg: any) {
     writeFile(filePath, buffer)
 
     if (!systemOpened) {
-        openSystemFolder(folder)
+        openInSystem(folder)
         systemOpened = true
     }
 }
@@ -351,7 +355,7 @@ export function createLog(err: Error) {
     return {
         time: new Date(),
         os: process.platform || "Unknown",
-        version: app.getVersion(),
+        version: getVersion(),
         type: "Uncaught Exception",
         source: "See stack",
         message: err.message,

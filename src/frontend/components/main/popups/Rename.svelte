@@ -3,13 +3,11 @@
     import { activePopup, activeShow, customScriptureBooks, drawerTabsData, effectsLibrary, scripturesCache, selected, showsCache } from "../../../stores"
     import { clone, removeDuplicates } from "../../helpers/array"
     import { history } from "../../helpers/history"
-    import Icon from "../../helpers/Icon.svelte"
     import { getLayoutRef } from "../../helpers/show"
     import { _show } from "../../helpers/shows"
     import T from "../../helpers/T.svelte"
-    import Button from "../../inputs/Button.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
-    import TextInput from "../../inputs/TextInput.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialTextInput from "../../inputs/MaterialTextInput.svelte"
 
     let list: string[] = []
     $: {
@@ -18,9 +16,12 @@
         if (($activeShow && $selected.id === "slide") || $selected.id === "group") {
             $selected.data.forEach((a, i) => {
                 let slide = a.id ? a : getLayoutRef()[a.index]
+                if (!slide) return
+
                 if (slide.parent) slide = slide.parent.id
                 else slide = slide.id
                 let name: string = $showsCache[$activeShow!.id].slides[slide].group || ""
+                if (name === ".") name = ""
                 list.push(name || "—")
                 if (i === 0) groupName = name
             })
@@ -117,7 +118,17 @@
                 history({ id: "UPDATE", newData: { key: "layouts", keys: layoutIds, subkey: "slides", data: newLayouts }, oldData: { id: $activeShow?.id }, location: { page: "show", id: "show_key" } })
             })
         },
-        group: () => renameAction.slide(),
+        group: () => {
+            $selected.data.forEach((a) => {
+                const slideId = a.id
+
+                // remove global group if active
+                if ($activeShow && $showsCache[$activeShow.id].slides[slideId].globalGroup)
+                    history({ id: "UPDATE", newData: { data: null, key: "slides", keys: [slideId], subkey: "globalGroup" }, oldData: { id: $activeShow?.id }, location: { page: "show", id: "show_key" } })
+
+                history({ id: "UPDATE", newData: { data: groupName, key: "slides", keys: [slideId], subkey: "group" }, oldData: { id: $activeShow?.id }, location: { page: "show", id: "show_key" } })
+            })
+        },
         chord: () => {
             let chord = $selected.data[0]
             let lines: Line[] = _show().slides([chord.slideId]).items([chord.itemIndex]).get("lines")[0][0]
@@ -171,38 +182,27 @@
     }
 
     let groupName = ""
-    const changeValue = (e: any) => (groupName = e.target.value)
 
     function keydown(e: KeyboardEvent) {
         if (e.key === "Enter") {
-            element?.querySelector("input")?.blur()
-            rename()
+            setTimeout(rename)
         }
     }
-
-    let element: HTMLElement | undefined
 </script>
 
 <svelte:window on:keydown={keydown} />
 
 {#if list.length > 1}
     <p><T id="popup.change_name" />:</p>
-    <ul style="list-style-position: inside;margin-bottom: 10px;">
+    <ul style="list-style-position: inside;margin-bottom: 20px;">
         {#each list as text}
             <li style="font-weight: bold;">{text}</li>
         {/each}
     </ul>
 {/if}
 
-<CombinedInput>
-    <div bind:this={element} style="width: 100%;">
-        <TextInput value={groupName} on:change={(e) => changeValue(e)} autoselect />
-    </div>
-</CombinedInput>
+<MaterialTextInput label="inputs.name" value={groupName} on:change={(e) => (groupName = e.detail)} autoselect />
 
-<CombinedInput style="margin-top: 10px;">
-    <Button on:click={rename} style="width: 100%;" center dark>
-        <Icon id="edit" right />
-        <T id="actions.rename" />
-    </Button>
-</CombinedInput>
+<MaterialButton variant="contained" style="margin-top: 20px;" icon="edit" on:click={rename}>
+    <T id="actions.rename" />
+</MaterialButton>

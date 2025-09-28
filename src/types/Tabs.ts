@@ -12,6 +12,7 @@ export interface Category {
     description?: string
     isArchive?: boolean
     action?: string // trigger custom action on content presentation
+    template?: string // set a custom template all shows within this category will use by default (if no other template is set)
     submenu?: { options: any[] } // open a submenu of options (tags)
     openTrigger?: Function // trigger a custom function
 }
@@ -24,6 +25,8 @@ export interface BibleCategories extends Category {
     attributionString?: string // API needs custom attribution
     books2?: any[] // api cache
     cacheUpdate?: Date
+    favorite?: boolean // marked as favorite
+    biblePreviewIndex?: number
     collection?: {
         versions: string[]
     }
@@ -51,5 +54,5 @@ export interface DrawerTabs {
 }
 
 export type DrawerTabIds = "shows" | "media" | "overlays" | "audio" | "scripture" | "calendar" | "timers" | "templates" | "functions"
-export type SettingsTabs = "general" | "files" | "display_settings" | "styles" | "connection" | "theme" | "other" // "calendar"
+export type SettingsTabs = "general" | "files" | "display_settings" | "styles" | "connection" | "profiles" | "theme" | "other" // "calendar"
 export type TopViews = "show" | "edit" | "reflow" | "draw" | "stage" | "calendar" | "settings"

@@ -4,7 +4,7 @@ import { ToMain } from "../../types/IPC/ToMain"
 import type { SaveActions } from "../../types/Save"
 import type { Show, Shows, TrimmedShow, TrimmedShows } from "../../types/Show"
 import { sendMain, sendToMain } from "../IPC/main"
-import { createFolder, dataFolderNames, doesPathExist, getDataFolder, getTimePointString, makeDir, openSystemFolder, readFile, readFileAsync, selectFilesDialog, writeFile, writeFileAsync } from "../utils/files"
+import { createFolder, dataFolderNames, doesPathExist, getDataFolder, getTimePointString, makeDir, openInSystem, readFile, readFileAsync, selectFilesDialog, writeFile, writeFileAsync } from "../utils/files"
 import { stores, updateDataPath } from "./store"
 import { wait } from "../utils/helpers"
 
@@ -30,12 +30,12 @@ export async function startBackup({ showsPath, dataPath, customTriggers }: { sho
     // if (bibles) await syncBibles()
 
     // SHOWS
-    if (!isAutoBackup) await syncAllShows()
+    if (!isAutoBackup || customTriggers?.backupShows) await syncAllShows()
 
     sendToMain(ToMain.BACKUP, { finished: true, path: backupFolder })
 
     if (customTriggers?.changeUserData) updateDataPath(customTriggers.changeUserData)
-    else if (!isAutoBackup) openSystemFolder(backupFolder)
+    else if (!isAutoBackup) openInSystem(backupFolder, true)
 
     /// //
 
@@ -118,7 +118,7 @@ export function restoreFiles({ showsPath }: { showsPath: string }) {
         }
 
         stores[storeId].clear()
-        ;(stores[storeId] as any).set(data)
+            ; (stores[storeId] as any).set(data)
         // WIP restoring synced settings will reset settings
         sendMain(storeId as Main, data)
     }
