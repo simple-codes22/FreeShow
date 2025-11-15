@@ -9,7 +9,7 @@ import { transposeText } from "../../utils/chordTranspose"
 import { triggerFunction } from "../../utils/common"
 import { syncDrive } from "../../utils/drive"
 import { togglePlayingMedia } from "../../utils/shortcuts"
-import { pcoSync } from "../../utils/startup"
+import { contentProviderSync } from "../../utils/startup"
 import { updateTransition } from "../../utils/transitions"
 import { startMetronome } from "../drawer/audio/metronome"
 import { pauseAllTimers } from "../drawer/timers/timers"
@@ -86,6 +86,7 @@ import {
     stopTimerByName,
     timerSeekTo,
     toggleLock,
+    toggleLogSongUsage,
     updateVolumeValues,
     videoSeekTo
 } from "./apiHelper"
@@ -133,6 +134,7 @@ export type API_seek = { id?: string; seconds: number }
 export type API_media = { path: string; index?: number; data?: any }
 export type API_scripture = { id?: string; reference: string }
 export type API_toggle = { id: string; value?: boolean }
+export type API_toggle_specific = { value?: boolean }
 export type API_stage_output_layout = { outputId?: string; stageLayoutId: string }
 export type API_output_style = { outputId?: string; styleId?: string }
 export type API_output_lock = { value?: boolean; outputId?: string }
@@ -308,12 +310,15 @@ export const API_ACTIONS = {
 
     // CONNECTION
     sync_drive: () => syncDrive(true),
-    sync_pco: () => pcoSync(),
+    sync_content_provider: () => contentProviderSync(),
 
     // EMIT
     send_midi: (data: API_midi) => sendMidi(data), // DEPRECATED, use emit_action instead
     send_rest_command: (data: API_rest_command) => sendRestCommandSync(data), // DEPRECATED, use emit_action instead
     emit_action: (data: API_emitter) => emitData(data),
+
+    // OTHER
+    toggle_log_song_usage: (data: API_toggle_specific) => toggleLogSongUsage(data),
 
     // ACTION
     name_run_action: (data: API_strval) => runActionByName(data.value), // BC

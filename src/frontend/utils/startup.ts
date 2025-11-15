@@ -1,20 +1,24 @@
 import { get } from "svelte/store"
+import type { ContentProviderId } from "../../electron/contentProviders/base/types"
 import { OUTPUT, STARTUP } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
-import { activePopup, alertMessage, chumsSyncCategories, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
+import { cameraManager } from "../media/cameraManager"
+import { activePopup, alertMessage, contentProviderData, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
 import { startTracking } from "./analytics"
 import { wait, waitUntilValueIsDefined } from "./common"
 import { setLanguage } from "./language"
 import { storeSubscriber } from "./listeners"
+import { openProfileByName } from "./profile"
 import { receiveOUTPUTasOUTPUT, remoteListen, setupMainReceivers } from "./receivers"
 import { destroy, receive, send } from "./request"
 import { save, unsavedUpdater } from "./save"
-import { cameraManager } from "../media/cameraManager"
 
 let initialized = false
+let startupProfile = ""
+
 export function startup() {
     window.api.receive(
         STARTUP,
@@ -34,6 +38,8 @@ export function startup() {
                 return
             }
 
+            startupProfile = msg.autoProfile
+
             startupMain()
         },
         "startup"
@@ -49,12 +55,15 @@ async function startupMain() {
     getStoredData()
 
     await waitUntilValueIsDefined(() => get(loaded), 100, 8000)
+
+    if (startupProfile) openProfileByName(startupProfile)
+
     storeSubscriber()
     remoteListen()
     checkStartupActions()
     autoBackup()
     startTracking()
-    connect()
+    contentProviderSync()
 
     // custom alert
     if (get(language) === "no" && !get(activePopup) && !Object.values(get(scriptures)).find((a) => ["eea18ccd2ca05dde-01", "7bcaa2f2e77739d5-01"].includes(a.id || "")) && Math.random() < 0.4) {
@@ -90,18 +99,17 @@ function autoBackup() {
     }
 }
 
-function connect() {
-    pcoSync()
-    chumsSync()
+export function contentProviderSync() {
+    const providers = [
+        { providerId: "planningcenter" as ContentProviderId, scope: "services", data: { dataPath: get(dataPath) } },
+        { providerId: "churchApps" as ContentProviderId, scope: "plans", data: { shows: get(shows), categories: get(contentProviderData).churchApps?.syncCategories || [], showsPath: get(showsPath) || "" } }
+    ]
+
+    providers.forEach(({ providerId, scope, data }) => {
+        sendMain(Main.PROVIDER_STARTUP_LOAD, { providerId, scope, data })
+    })
 }
 
-export function pcoSync() {
-    sendMain(Main.PCO_STARTUP_LOAD, { dataPath: get(dataPath) })
-}
-
-export function chumsSync() {
-    sendMain(Main.CHUMS_STARTUP_LOAD, { shows: get(shows), categories: get(chumsSyncCategories), showsPath: get(showsPath) || "" })
-}
 
 function getMainData() {
     requestMainMultiple({

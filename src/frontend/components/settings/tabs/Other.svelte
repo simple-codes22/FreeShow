@@ -3,7 +3,7 @@
     import { EXPORT } from "../../../../types/Channels"
     import { Main } from "../../../../types/IPC/Main"
     import { destroyMain, receiveMain, requestMain, sendMain } from "../../../IPC/main"
-    import { activePage, activePopup, alertMessage, alertUpdates, dataPath, deletedShows, os, popupData, shows, showsCache, showsPath, special, usageLog } from "../../../stores"
+    import { activePage, activePopup, alertMessage, alertUpdates, dataPath, deletedShows, os, popupData, shows, showsCache, showsPath, special, usageLog, version } from "../../../stores"
     import { send } from "../../../utils/request"
     import T from "../../helpers/T.svelte"
     import InputRow from "../../input/InputRow.svelte"
@@ -16,9 +16,7 @@
         if ($showsPath) sendMain(Main.FULL_SHOWS_LIST, { path: $showsPath })
         requestMain(Main.GET_STORE_VALUE, { file: "config", key: "disableHardwareAcceleration" }, (a) => {
             if (a.key === "disableHardwareAcceleration") {
-                let value = a.value
-                if (a.value === null) value = $os.platform === "darwin"
-                disableHardwareAcceleration = !!value
+                disableHardwareAcceleration = !!a.value
             }
         })
         if ($showsPath)
@@ -37,7 +35,7 @@
 
     function updateSpecial(value, key) {
         special.update((a) => {
-            if (!value && key !== "autoUpdates") delete a[key]
+            if (!value && key !== "autoLocateMedia") delete a[key]
             else a[key] = value
 
             return a
@@ -156,20 +154,28 @@
     let usageLogExported = false
     function exportUsageLog() {
         exportingUsageLog = true
-        setTimeout(() => (usageLogExported = true), 1000)
+        setTimeout(() => {
+            usageLogExported = true
+            exportingUsageLog = false
+        }, 1000)
         send(EXPORT, ["USAGE"], { path: $dataPath, content: $usageLog })
     }
     function resetUsageLog() {
         usageLog.set({ all: [] })
+        usageLogExported = false
     }
+
+    $: isBeta = $version.includes("beta")
 </script>
 
-<MaterialToggleSwitch label="settings.auto_updates" checked={$special.autoUpdates !== false} defaultValue={true} on:change={(e) => updateSpecial(e.detail, "autoUpdates")} />
+<MaterialToggleSwitch label="settings.auto_updates" checked={$special.autoUpdates} on:change={(e) => updateSpecial(e.detail, "autoUpdates")} />
 
 <!-- <InputRow arrow={$alertUpdates}> -->
 <MaterialToggleSwitch style="flex: 1;" label="settings.alert_updates" checked={$alertUpdates} defaultValue={true} on:change={(e) => alertUpdates.set(e.detail)} />
 <!-- <div slot="menu"> -->
-<MaterialToggleSwitch label="settings.alert_updates_beta" checked={$special.betaVersionAlert} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "betaVersionAlert")} />
+{#if $alertUpdates}
+    <MaterialToggleSwitch label="settings.alert_updates_beta" disabled={isBeta} checked={isBeta ? $alertUpdates : $special.betaVersionAlert} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "betaVersionAlert")} />
+{/if}
 <!-- </div> -->
 <!-- </InputRow> -->
 
@@ -177,7 +183,9 @@
 
 <MaterialToggleSwitch label="settings.popup_before_close" checked={$special.showClosePopup || false} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "showClosePopup")} />
 
-<MaterialToggleSwitch label="settings.disable_hardware_acceleration" checked={disableHardwareAcceleration} on:change={toggleHardwareAcceleration} />
+<MaterialToggleSwitch label="settings.log_song_usage" checked={$special.logSongUsage || false} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "logSongUsage")} />
+
+<MaterialToggleSwitch label="settings.disable_hardware_acceleration" checked={disableHardwareAcceleration} defaultValue={false} on:change={toggleHardwareAcceleration} />
 <!-- "optimized_mode": "Optimized mode", -->
 <!-- <MaterialToggleSwitch label="settings.optimized_mode" checked={$special.optimizedMode} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "optimizedMode")} /> -->
 
@@ -258,7 +266,7 @@
     </MaterialButton>
 </InputRow>
 
-{#if $usageLog.all?.length}
+{#if $special.logSongUsage && $usageLog.all?.length}
     <InputRow>
         <MaterialButton disabled={exportingUsageLog} style="width: 100%;justify-content: left;" icon={usageLogExported ? "reset" : "export"} on:click={() => (usageLogExported ? resetUsageLog() : exportUsageLog())}>
             <T id="actions.{usageLogExported ? 'reset' : 'export'}_usage_log" />

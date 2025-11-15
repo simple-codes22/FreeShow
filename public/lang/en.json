@@ -217,8 +217,10 @@
         "mute_when_video_plays": "Mute when video plays",
         "allow_gaining": "Allow gaining",
         "allow_gaining_tip": "Allow setting volume above 100% (May cause distortion)",
-        "pre_fader_volume_meter": "Pre fader volume meter",
         "mixer": "Mixer",
+        "equalizer": "Equalizer",
+        "preset": "Preset",
+        "main": "Main",
         "metronome": "Metronome",
         "toggle_metronome": "Toggle metronome",
         "use_metadata_bpm": "Use BPM from metadata",
@@ -482,9 +484,10 @@
         "manage_colors": "Manage colors",
         "manage_metadata": "Manage metadata",
         "manage_dynamic_values": "Manage dynamic values",
+        "template_style_overrides": "Style overwrites",
         "choose_camera": "Choose camera",
         "manage_tags": "Manage tags",
-        "chums_sync_categories": "Select categories to sync",
+        "sync_categories": "Sync categories",
         "effect_items": "Effect items",
         "initialize": "Welcome to FreeShow",
         "unsaved": "Are you sure you want to quit?",
@@ -794,7 +797,9 @@
         "activate_background_cleared": "Activate when background is cleared",
         "activate_show_created": "Activate when show is created",
         "activate_show_opened": "Activate when show is opened",
-        "activate_audio_playlist_ended": "Activate when audio playlist has ended"
+        "activate_audio_playlist_ended": "Activate when audio playlist has ended",
+        "mark_played": "Mark as played",
+        "mark_not_played": "Mark as not played"
     },
     "conditions": {
         "show_item": "Show item if",
@@ -946,6 +951,8 @@
         "max_lines_per_slide": "Max lines per slide",
         "break_long_lines": "Break long lines",
         "break_long_lines_tip": "Break line if longer than the set words",
+        "style_overrides_tip": "Automatically restyle matching words.",
+        "style_override_pattern": "Word or /regex/",
         "skip_virtual_breaks": "Skip virtual breaks",
         "media_fit": "Media fit",
         "cropping": "Cropping",
@@ -1069,11 +1076,12 @@
         "slide_tracker": "Progress",
         "visualizer": "Visualizer",
         "captions": "Captions",
+        "metronome": "Metronome",
         "icon": "Icon",
         "effect": "Effect",
         "slide_text": "Slide text",
         "slide_notes": "Slide notes",
-        "current_output": "Current output"
+        "current_output": "Output window"
     },
     "borders": {
         "solid": "Solid",
@@ -1204,7 +1212,8 @@
         "source_output": "Source output",
         "auto_stretch": "Auto stretch content",
         "labels": "Show labels",
-        "label_color": "Label color"
+        "label_color": "Label color",
+        "create_stage_output": "Create stage output"
     },
     "settings": {
         "general": "General",
@@ -1262,6 +1271,7 @@
         "auto_group_numbers": "Auto assign group numbers",
         "transparent_slides": "Transparent slide preview",
         "full_colors": "High contrast group colors",
+        "next_item_on_last_slide": "Arrow left/right changes project item on first/last slide",
         "slide_number_keys": "Play slides with number keys",
         "auto_shortcut_first_letter": "Auto shortcut to first letter in text",
         "startup_projects_list": "Show the projects list on startup",
@@ -1294,11 +1304,13 @@
         "show_location": "Show location",
         "data_location": "Data location",
         "user_data_location": "Save user settings at 'Data location'",
+        "user_data_location_confirm": "Only continue if you know what you are doing. Change user data location?",
         "user_data_exists": "Found existing data at custom location, would you like to overwrite it?",
         "user_data_yes": "Yes, keep current data",
         "user_data_no": "No, import existing data",
         "auto_locate_missing_media_files": "Auto locate missing media files",
         "popup_before_close": "Enable close confirmation popup",
+        "log_song_usage": "Log song usage to a file",
         "disable_hardware_acceleration": "Disable hardware acceleration",
         "restart_for_change": "You have to restart the program for the change to take effect!",
         "font": "Font",
@@ -1322,6 +1334,7 @@
         "restart": "Restart servers",
         "connect_to": "Connect to $1",
         "disconnect_from": "Disconnect from $1",
+        "sync_categories_tip": "Select which categories to upload as songs",
         "reset_all": "Reset everything",
         "reset_theme": "Reset theme",
         "reset_themes": "Reset themes",
@@ -1407,6 +1420,7 @@
         "verse_numbers": "Verse numbers",
         "verses_on_individual_lines": "Verses on individual lines",
         "divide_long_verses": "Split long verses",
+        "split_long_verses_suffix": "Show letter suffix",
         "version": "Show version",
         "reference": "Show reference",
         "split_reference": "Split reference",
@@ -1618,9 +1632,5 @@
         "translation_description_multiline": "Adds all languages in a single textbox in alternating lines. (Like in Songbeamer)",
         "translation_description_textboxes": "Adds every language as a separate textbox to the slide.",
         "translation_description_layouts": "Creates a unique set of slides and a layout for every language."
-    },
-    "chums": {
-        "sync_categories": "Sync categories",
-        "sync_categories_description": "Select which categories to sync as songs with Chums"
     }
 }

@@ -5,11 +5,11 @@
     import { history } from "../../helpers/history"
     import { loadShows } from "../../helpers/setShow"
     import T from "../../helpers/T.svelte"
+    import { dateToString } from "../../helpers/time"
     import HRule from "../../input/HRule.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import MaterialTextarea from "../../inputs/MaterialTextarea.svelte"
     import Center from "../../system/Center.svelte"
-    import Date from "../../system/Date.svelte"
     import Loader from "../Loader.svelte"
 
     let data = $popupData.data
@@ -63,7 +63,9 @@
                     return
                 }
 
-                if (show.timestamps?.modified > compareShow.timestamps?.modified) keepId = id
+                const first = show.timestamps?.modified || 0
+                const second = compareShow.timestamps?.modified || 0
+                if (first > second) keepId = id
             })
 
             ids = ids.filter((id) => id !== keepId)
@@ -184,14 +186,14 @@
                 <p style="display: flex;align-items: center;justify-content: space-between;padding: 5px 0;">
                     <span>{show.name || "—"}</span>
                     <!-- creation/modified date! -->
-                    <span style="opacity: 0.5;font-size: 0.7em;"><Date d={show.timestamps?.modified} /></span>
+                    <span style="opacity: 0.5;font-size: 0.7em;">{dateToString(show.timestamps?.modified || "", true)}</span>
                 </p>
 
                 {#if loadedTexts[i]}
                     <MaterialTextarea label="edit.text" rows={5} value={loadedTexts[i]} disabled />
                 {/if}
 
-                <MaterialButton icon="delete" class="red" style="padding: 5px;" on:click={() => deleteAtIndex(i)} white>
+                <MaterialButton icon="delete" style="padding: 5px;" on:click={() => deleteAtIndex(i)} white red>
                     <T id="actions.delete" />
                 </MaterialButton>
             </div>
@@ -224,14 +226,14 @@
 
     <HRule />
 
-    <MaterialButton variant="outlined" class="red" on:click={deleteMatching}>
+    <MaterialButton variant="outlined" on:click={deleteMatching} red>
         <T id="show.delete_match" />
     </MaterialButton>
 
-    <MaterialButton variant="outlined" class="red" on:click={deleteOldest}>
+    <MaterialButton variant="outlined" on:click={deleteOldest} red>
         <T id="show.delete_keep_last_modified" />
     </MaterialButton>
-    <MaterialButton variant="outlined" class="red" on:click={deleteNewest}>
+    <MaterialButton variant="outlined" on:click={deleteNewest} red>
         <T id="show.delete_keep_first_created" />
     </MaterialButton>
 {/if}
@@ -246,17 +248,5 @@
     .show {
         display: flex;
         flex-direction: column;
-    }
-
-    /* red */
-    :global(button.red) {
-        background-color: rgb(255 0 0 / 0.25) !important;
-    }
-    :global(button.red):hover:not(.contained):not(.active) {
-        background-color: rgb(255 0 0 / 0.35) !important;
-    }
-    :global(button.red):active:not(.contained):not(.active),
-    :global(button.red):focus:not(.contained):not(.active) {
-        background-color: rgb(255 0 0 / 0.3) !important;
     }
 </style>

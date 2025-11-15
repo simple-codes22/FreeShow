@@ -1,7 +1,9 @@
 <script lang="ts">
     import { onDestroy } from "svelte"
+    import type { ContentProviderId } from "../../../../electron/contentProviders/base/types"
     import { Main } from "../../../../types/IPC/Main"
-    import { destroyMain, receiveMain, sendMain } from "../../../IPC/main"
+    import type { ClickEvent } from "../../../../types/Main"
+    import { destroyMain, receiveMain, requestMain, sendMain } from "../../../IPC/main"
     import {
         activeEdit,
         activeFocus,
@@ -17,6 +19,7 @@
         outLocked,
         outputs,
         popupData,
+        providerConnections,
         selectAllMedia,
         selected,
         sorted
@@ -39,6 +42,7 @@
     import Screens from "../live/Screens.svelte"
     import Windows from "../live/Windows.svelte"
     import PlayerVideos from "../player/PlayerVideos.svelte"
+    import ContentLibraryBrowser from "./ContentLibraryBrowser.svelte"
     import Folder from "./Folder.svelte"
     import Media from "./MediaCard.svelte"
     import MediaGrid from "./MediaGrid.svelte"
@@ -53,7 +57,8 @@
     let files: File[] = []
 
     let specialTabs = ["online", "screens", "cameras"]
-    let notFolders = ["all", ...specialTabs]
+    $: isProviderSection = contentProviders.some((p) => p.providerId === active)
+    $: notFolders = ["all", ...specialTabs, ...contentProviders.map((p) => p.providerId)]
     $: rootPath = notFolders.includes(active || "") ? "" : active !== null ? $mediaFolders[active]?.path || "" : ""
     $: path = notFolders.includes(active || "") ? "" : rootPath
 
@@ -85,9 +90,23 @@
         else if (active === "online") onlineTab = id
     }
 
+    // Content providers with libraries, and are currently connected
+    let contentProviders: { providerId: ContentProviderId; displayName: string; hasContentLibrary: boolean }[] = []
+    $: if ($providerConnections) getProviders()
+    function getProviders() {
+        requestMain(Main.GET_CONTENT_PROVIDERS).then((allProviders) => {
+            contentProviders = allProviders.filter((p) => p.hasContentLibrary && $providerConnections[p.providerId])
+        })
+    }
+
+    $: if ($providerConnections) {
+        requestMain(Main.GET_CONTENT_PROVIDERS).then((allProviders) => {
+            contentProviders = allProviders.filter((p) => p.hasContentLibrary && $providerConnections[p.providerId])
+        })
+    }
+
     let screenTab = $drawerTabsData.media?.openedSubSubTab?.screens || "screens"
     let onlineTab = $drawerTabsData.media?.openedSubSubTab?.online || "youtube"
-
     $: if (active === "online" && onlineTab === "pixabay" && (searchValue !== null || activeView)) loadFilesAsync()
     $: if (active === "online" && onlineTab === "unsplash" && (searchValue !== null || activeView)) loadFilesAsync()
 
@@ -121,7 +140,10 @@
                 prevActive = active
                 files = []
                 fullFilteredFiles = []
-                Object.values($mediaFolders).forEach((data) => sendMain(Main.READ_FOLDER, { path: data.path!, disableThumbnails: $mediaOptions.mode === "list" }))
+
+                for (const data of Object.values($mediaFolders)) {
+                    sendMain(Main.READ_FOLDER, { path: data.path!, disableThumbnails: $mediaOptions.mode === "list" })
+                }
             }
         } else if (path?.length) {
             if (path !== prevActive) {
@@ -178,7 +200,7 @@
     $: if (searchValue !== undefined) filterSearch()
 
     function filterFiles() {
-        if (active === "online" || active === "screens" || active === "cameras") return
+        if (active === "online" || active === "screens" || active === "cameras" || isProviderSection) return
 
         // filter files
         if (activeView === "all") filteredFiles = files.filter((a) => active !== "all" || !a.folder)
@@ -253,7 +275,7 @@
     function selectMedia() {
         if (activeFile === null) return
 
-        let path = allFiles[activeFile]
+        let path = allFiles[activeFile] || ""
         if (!path) return
 
         activeEdit.set({ id: path, type: "media", items: [] })
@@ -298,13 +320,19 @@
         }
     }
 
-    function goBack() {
+    function goBack(e?: ClickEvent) {
+        if (e?.detail.ctrl) {
+            lastPaths.push(path)
+            path = rootPath
+            return
+        }
+
         const lastSlash = path.lastIndexOf("\\") > -1 ? path.lastIndexOf("\\") : path.lastIndexOf("/")
         const folder = path.slice(0, lastSlash)
 
         lastPaths.push(path)
 
-        path = folder.length > rootPath.length ? folder : rootPath
+        path = folder.length > rootPath.length ? folder || rootPath : rootPath
     }
 
     const slidesViews: any = { grid: "list", list: "grid" }
@@ -383,7 +411,9 @@
 
 <div class="scroll" style="flex: 1;overflow-y: auto;" bind:this={scrollElem}>
     <div class="grid" class:list={$mediaOptions.mode === "list"} style="height: 100%;">
-        {#if active === "online" && (onlineTab === "youtube" || onlineTab === "vimeo")}
+        {#if isProviderSection}
+            <ContentLibraryBrowser providerId={active} columns={$mediaOptions.columns} />
+        {:else if active === "online" && (onlineTab === "youtube" || onlineTab === "vimeo")}
             <div class="gridgap">
                 <PlayerVideos active={onlineTab} {searchValue} />
             </div>
@@ -418,7 +448,7 @@
                     {#if $mediaOptions.mode === "grid"}
                         <MediaGrid items={sortedFiles} columns={$mediaOptions.columns} let:item>
                             {#if item.folder}
-                                <Folder bind:rootPath={path} name={item.name} path={item.path} mode={$mediaOptions.mode} folderPreview={sortedFiles.length < 20} />
+                                <Folder name={item.name} path={item.path} mode={$mediaOptions.mode} folderPreview={sortedFiles.length < 20} on:open={(e) => (path = e.detail)} />
                             {:else}
                                 <Media
                                     credits={item.credits || {}}
@@ -436,7 +466,7 @@
                     {:else}
                         <VirtualList items={sortedFiles} let:item={file}>
                             {#if file.folder}
-                                <Folder bind:rootPath={path} name={file.name} path={file.path} mode={$mediaOptions.mode} />
+                                <Folder name={file.name} path={file.path} mode={$mediaOptions.mode} on:open={(e) => (path = e.detail)} />
                             {:else}
                                 <Media
                                     credits={file.credits || {}}
@@ -466,7 +496,11 @@
 
 <!-- NAV -->
 
-{#if active === "online"}
+{#if isProviderSection}
+    <FloatingInputs onlyOne>
+        <MaterialZoom columns={$mediaOptions.columns} defaultValue={5} on:change={(e) => mediaOptions.set({ ...$mediaOptions, columns: e.detail })} />
+    </FloatingInputs>
+{:else if active === "online"}
     {#if onlineTab === "youtube" || onlineTab === "vimeo"}
         <FloatingInputs onlyOne>
             <MaterialButton
@@ -593,6 +627,9 @@
     .grid :global(.selectElem) {
         outline-offset: -3px;
     }
+    .grid :global(.isSelected) {
+        border-radius: 0 !important;
+    }
     /* .grid :global(#media.isSelected .main) {
         z-index: -1;
     } */
@@ -614,6 +651,6 @@
         overflow-y: auto;
         overflow-x: hidden;
 
-        /* padding-bottom: 60px; */
+        padding-bottom: 60px;
     }
 </style>

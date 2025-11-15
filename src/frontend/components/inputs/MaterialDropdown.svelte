@@ -46,6 +46,8 @@
 
     let maxHeight = 350
     function calculateMaxHeight() {
+        if (!dropdownEl) return
+
         const triggerRect = dropdownEl.getBoundingClientRect()
         scrollParent = getScrollParent(dropdownEl)
         if (!scrollParent) return
@@ -287,7 +289,7 @@
 
     <div
         class="input edit dropdown-trigger"
-        data-title="{translateText(label)}: <b>{selected?.label || '—'}</b>"
+        data-title="{translateText(label)}{selected ? `: <b>${selected.label || '—'}</b>` : ''}"
         role="button"
         tabindex={disabled ? undefined : 0}
         on:click={(e) => {

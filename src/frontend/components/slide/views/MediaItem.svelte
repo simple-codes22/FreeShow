@@ -13,7 +13,7 @@
 
     export let id: string
     export let item: Item
-    export let outputId: string = ""
+    export let outputId = ""
     export let slideRef: any = {}
 
     export let preview = false
@@ -36,7 +36,7 @@
             backgroundId = layoutRef[0]?.data?.background || ""
         }
 
-        const media = _show(slideRef.showId).get().media
+        const media = _show(slideRef.showId).get()?.media || {}
 
         mediaItemPath = media[backgroundId]?.path || ""
     }

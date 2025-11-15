@@ -2,8 +2,8 @@
     import { onDestroy, onMount } from "svelte"
     import { OUTPUT } from "../../../types/Channels"
     import type { Styles } from "../../../types/Settings"
-    import type { Item, Transition } from "../../../types/Show"
-    import { currentWindow, outputs, overlays, showsCache, styles, templates, variables } from "../../stores"
+    import type { Item, Transition, TemplateStyleOverride, Slide } from "../../../types/Show"
+    import { currentWindow, outputs, overlays, showsCache, styles, templates, variables, groups } from "../../stores"
     import { send } from "../../utils/request"
     import autosize from "../edit/scripts/autosize"
     import { clone } from "../helpers/array"
@@ -79,6 +79,8 @@
     })
     onDestroy(() => {
         if (dateInterval) clearInterval(dateInterval)
+        if (loopStop) clearTimeout(loopStop)
+        if (paddingCorrTimeout) clearTimeout(paddingCorrTimeout)
     })
 
     // $: if (item.type === "timer") ref.id = item.timer!.id!
@@ -131,6 +133,41 @@
         return 1
     }
 
+    // WORD OVERRIDE
+
+    // grab any template level overrides so we can re-use them later
+    let templateStyleOverrides: TemplateStyleOverride[] = []
+    let slideData: Slide | null = null
+    let groupTemplateId = ""
+    let resolvedTemplateId = ""
+    $: slideData = (() => {
+        if (!ref?.showId) return null
+        const slideId = ref.slideId || ref.id
+        if (!slideId) return null
+        return ($showsCache[ref.showId]?.slides?.[slideId] as Slide) || null
+    })()
+    $: groupTemplateId = (() => {
+        if (!slideData) return ""
+        const groupId = slideData.globalGroup && slideData.globalGroup !== "none" ? slideData.globalGroup : slideData.group
+        if (!groupId) return ""
+        // pick up template supplied by group overrides (if present)
+        return $groups[groupId]?.template || ""
+    })()
+    $: resolvedTemplateId = (() => {
+        if (ref?.type === "template" && ref.id) return ref.id
+        if (ref?.type === "overlay") return ""
+        if (slideData?.settings?.template) return slideData.settings.template
+        if (groupTemplateId) return groupTemplateId
+        if (currentShowTemplateId) return currentShowTemplateId
+        if (outputStyle?.template) return outputStyle.template
+        return ""
+    })()
+    $: templateStyleOverrides = (() => {
+        // ensure overrides follow whichever template actually drives this slide
+        if (!resolvedTemplateId) return []
+        return clone($templates[resolvedTemplateId]?.settings?.styleOverrides || [])
+    })()
+
     // AUTO SIZE
 
     let itemElem: HTMLElement | undefined
@@ -155,6 +192,7 @@
     let loopStop: NodeJS.Timeout | null = null
     let newCall = false
     function calculateAutosize() {
+        if (item.type === "media" || item.type === "camera" || item.type === "icon") return
         if (isStage && !stageAutoSize) return
 
         if (loopStop) {
@@ -269,6 +307,7 @@
     }
 
     // WIP padding can be checked by auto size if style is added to parent
+    let paddingCorrTimeout: NodeJS.Timeout | null = null
     function getPaddingCorrection(stageItem: any) {
         let result = ""
         if (typeof stageItem?.style !== "string") return ""
@@ -281,7 +320,10 @@
                 }
             })
         }
-        setTimeout(calculateAutosize, 150)
+
+        if (paddingCorrTimeout) clearTimeout(paddingCorrTimeout)
+        paddingCorrTimeout = setTimeout(calculateAutosize, 150)
+
         return result
     }
 
@@ -358,6 +400,7 @@
             {maxLinesInvert}
             {centerPreview}
             {revealed}
+            styleOverrides={templateStyleOverrides}
             on:updateAutoSize={calculateAutosize}
         />
     {:else}

@@ -12,13 +12,16 @@ import {
     actions,
     activeProject,
     activeRename,
+    activeTimers,
     allOutputs,
     categories,
+    connections,
     currentOutputSettings,
     currentWindow,
     disabledServers,
     effects,
     lockedOverlays,
+    media,
     outputDisplay,
     outputs,
     outputSlideCache,
@@ -49,8 +52,8 @@ import { customActionActivation, runAction } from "../actions/actions"
 import type { API_camera, API_screen, API_stage_output_layout } from "../actions/api"
 import { getItemText, getItemTextArray, getSlideText } from "../edit/scripts/textStyle"
 import type { EditInput } from "../edit/values/boxes"
-import { clearSlide } from "../output/clear"
-import { clone, keysToID, removeDuplicates, sortByName, sortObject } from "./array"
+import { clearBackground, clearSlide } from "../output/clear"
+import { areObjectsEqual, clone, keysToID, removeDuplicates, sortByName, sortObject } from "./array"
 import { getExtension, getFileName, removeExtension } from "./media"
 import { getLayoutRef } from "./show"
 import { getFewestOutputLines, getItemWithMostLines, replaceDynamicValues } from "./showActions"
@@ -143,11 +146,18 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
 
             if (overrideCategoryAction) resetActionTrigger = true
             else resetActionTrigger = false
+
+            // if current playing background is "foreground", clear it
+            const currentBackground = get(outputs)[outs?.[0]]?.out?.background || {}
+            const mediaData = get(media)[currentBackground.path || ""] || {}
+            if (mediaData.videoType === "foreground") clearBackground()
         }
 
         let toggleState = false
         outs.forEach((id: string, i: number) => {
             const output = a[id]
+            if (!output) return
+
             if (!output.out) a[id].out = {}
             if (!output.out?.[type]) a[id].out![type] = type === "overlays" || type === "effects" ? [] : null
             data = clone(inputData)
@@ -198,17 +208,19 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
 
 export function startFolderTimer(folderPath: string, file: { type: string; path: string }) {
     // WIP timer loop does not work if project is changed (should be global for the folder instead of per project item)
-    const projectItems = get(projects)[get(activeProject) || ""]?.shows
+    const projectItems = get(projects)[get(activeProject) || ""]?.shows || []
     // this does not work with multiple of the same folder
-    const projectItemIndex = projectItems.findIndex((a) => a.type === "folder" && a.id === folderPath)
+    const projectItemIndex = projectItems.findIndex((a) => (a.type === "folder" || a.type === "pdf") && a.id === folderPath)
     const timer = Number(projectItems?.[projectItemIndex]?.data?.timer ?? 10)
-    if (!timer || file.type !== "image") return
+    if (!timer || (file.type !== "image" && file.type !== "pdf")) return
 
     // newSlideTimer played from Preview.svelte
     setOutput("transition", { duration: timer, folderPath })
 }
 
 function appendShowUsage(showId: string) {
+    if (!get(special).logSongUsage) return
+
     const show = get(showsCache)[showId]
     if (!show) return
 
@@ -256,7 +268,7 @@ function changeOutputBackground(data, { output, id, mute, videoOutputId }) {
 
     if (id === videoOutputId) {
         const muteAudio = get(special).muteAudioWhenVideoPlays
-        const isVideo = videoExtensions.includes(getExtension(data.path))
+        const isVideo = data.type === "player" || data.type === "video" || videoExtensions.includes(getExtension(data.path))
         if (!data.muted && muteAudio && isVideo) fadeoutAllPlayingAudio()
         else fadeinAllPlayingAudio()
 
@@ -427,6 +439,8 @@ export function isOutCleared(key: string | null = null, updater: Outputs = get(o
     if (cleared && key === "transition") {
         // check overlay timers
         cleared = !outputIds.find((outputId) => Object.values(get(overlayTimers)).find((a) => a.outputId === outputId))
+        // check actual timers
+        if (cleared) cleared = !Object.keys(get(activeTimers)).length
     }
 
     return cleared
@@ -582,7 +596,7 @@ export function shouldBeCaptured(outputId: string, startup = false) {
     const captures = {
         ndi: !!output.ndi,
         server: !!(get(disabledServers).output_stream === false && (get(serverData)?.output_stream?.outputId || getActiveOutputs(get(outputs), false, true, true)[0]) === outputId),
-        stage: stageHasOutput(outputId)
+        stage: !get(disabledServers).stage && Object.keys(get(connections).STAGE || {}).length > 0 && stageHasOutput(outputId)
     }
 
     // alert user that screen recording starts
@@ -600,7 +614,7 @@ function stageHasOutput(outputId: string) {
             if (!outputItem) return false
         }
 
-        return (stageLayout.settings?.output || outputId) === outputId
+        return (outputItem?.currentOutput?.source || stageLayout.settings?.output || outputId) === outputId
 
         // WIP check that this stage layout is not disabled & used in a output or (web enabled (disabledServers) + has connection)!
     })
@@ -781,7 +795,7 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
 
         const type = item.type || "text"
 
-        const templateItem = sortedTemplateItems[type]?.shift()
+        const templateItem = clone(sortedTemplateItems[type]?.shift())
         if (!templateItem) return finish()
 
         item.style = templateItem.style || ""
@@ -799,10 +813,11 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
         // if (hasClickReveal) templateItem.clickReveal = true
 
         // remove exiting styling & add new if set in template
+        // WIP some keys are probably missing here...
         const extraStyles = ["chords", "textFit", "actions", "specialStyle", "scrolling", "bindings", "conditions", "clickReveal", "lineReveal", "fit", "filter", "flipped", "flippedY"]
-        extraStyles.forEach((style) => {
-            delete item[style]
-            if (templateItem[style]) item[style] = templateItem[style]
+        extraStyles.forEach((key) => {
+            delete item[key]
+            if (templateItem[key]) item[key] = templateItem[key]
         })
 
         if (type !== "text") return finish()
@@ -877,7 +892,15 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
     // remove textbox items
     templateItems = templateItems.filter((a) => (a.type || "text") !== "text")
     // remove any duplicate values
-    templateItems = templateItems.filter((item) => !newSlideItems.find((a) => JSON.stringify(item) === JSON.stringify(a)))
+    templateItems = templateItems.filter((item) => !newSlideItems.find((a) => {
+        const currentItem = clone(a)
+        delete currentItem.align
+        delete currentItem.auto
+        delete currentItem.autoFontSize
+        delete currentItem.fromTemplate
+
+        return areObjectsEqual(currentItem, item)
+    }))
 
     // this will ensure the correct order on the remaining items
     const remainingCount = Object.values(sortedTemplateItems).reduce((value, items) => (value += items.length), 0)
@@ -890,11 +913,13 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
     return newSlideItems // .reverse()
 }
 
-export function updateSlideFromTemplate(slide: Slide, template: Template, isFirst = false, removeOverflow = false) {
+export function updateSlideFromTemplate(slide: Slide, template: Template, isFirst = false, removeOverflow = false, firstTemplateId?: string) {
     const settings = template.settings || {}
+    if (!slide.settings) slide.settings = {}
 
     // if (settings.resolution || slide.settings.resolution) slide.settings.resolution = getResolution(settings.resolution)
-    if (isFirst && (settings.firstSlideTemplate || removeOverflow)) slide.settings.template = settings.firstSlideTemplate || ""
+    const firstTemplate = firstTemplateId ?? settings.firstSlideTemplate
+    if (isFirst && (firstTemplate || removeOverflow)) slide.settings.template = firstTemplate || ""
     if (settings.backgroundColor || slide.settings.color) slide.settings.color = settings.backgroundColor || ""
 
     // add overlay items to slide items

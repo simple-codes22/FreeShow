@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { keysToID, sortByName } from "../../../components/helpers/array"
-    import T from "../../../components/helpers/T.svelte"
-    import { categories, chumsSyncCategories, shows } from "../../../stores"
+    import { keysToID, sortByName } from "../../helpers/array"
+    import T from "../../helpers/T.svelte"
+    import { categories, contentProviderData, shows } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import MaterialCheckbox from "../../inputs/MaterialCheckbox.svelte"
 
@@ -15,17 +15,26 @@
 
     const categoryOptions = sortByName(mappedCategories)
 
+    $: currentlySelected = $contentProviderData.churchApps?.syncCategories || []
+
     function toggleCategory(id: string) {
-        if ($chumsSyncCategories.indexOf(id) === -1) chumsSyncCategories.update(() => [...$chumsSyncCategories, id])
-        else chumsSyncCategories.update(() => $chumsSyncCategories.filter((c) => c !== id))
+        contentProviderData.update((a) => {
+            if (currentlySelected.indexOf(id) === -1) {
+                a.churchApps = { ...a.churchApps, syncCategories: [...currentlySelected, id] }
+            } else {
+                a.churchApps = { ...a.churchApps, syncCategories: currentlySelected.filter((c) => c !== id) }
+            }
+
+            return a
+        })
     }
 </script>
 
-<p class="tip"><T id="chums.sync_categories_description" /></p>
+<p class="tip"><T id="settings.sync_categories_tip" /></p>
 
 <div class="categories">
     {#each categoryOptions as { id, name, count }}
-        <MaterialCheckbox label="{name} <span style='opacity: 0.7;font-size: 0.7em;'>({count})</span>" checked={$chumsSyncCategories.includes(id)} on:change={() => toggleCategory(id)} />
+        <MaterialCheckbox label="{name} <span style='opacity: 0.7;font-size: 0.7em;'>({count})</span>" checked={currentlySelected.includes(id)} on:change={() => toggleCategory(id)} />
     {/each}
 </div>
 

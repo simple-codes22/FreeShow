@@ -1,29 +1,44 @@
+/**
+ * WARNING: This file should ONLY be accessed through ChurchAppsProvider.
+ * Do not import or use this class directly in other parts of the application.
+ * Use ContentProviderRegistry or ChurchAppsProvider instead.
+ */
+
 import path from "path"
-import type { Main, MainSendPayloads } from "../../types/IPC/Main"
-import { ToMain } from "../../types/IPC/ToMain"
-import { sendToMain } from "../IPC/main"
-import { parseShow, readFile } from "../utils/files"
-import { ChumsConnect } from "./ChumsConnect"
-import type { ChumsSongData } from "./types"
+import { ToMain } from "../../../types/IPC/ToMain"
+import type { TrimmedShows } from "../../../types/Show"
+import { sendToMain } from "../../IPC/main"
+import { parseShow, readFile } from "../../utils/files"
+import { ChurchAppsConnect } from "./ChurchAppsConnect"
+import type { ChurchAppsSongData } from "./types"
 
 /**
- * Handles exporting FreeShow songs to Chums.
- * Syncs local songs with Chums by identifying missing songs and sending them in batches.
+ * Data structure for ChurchApps startup load
  */
-export class ChumsExport {
-    public static async sendSongsToChums(data: MainSendPayloads[Main.CHUMS_STARTUP_LOAD]): Promise<void> {
+export interface ChurchAppsStartupLoadData {
+    shows: TrimmedShows
+    categories: string[]
+    showsPath: string
+}
+
+/**
+ * Handles exporting FreeShow songs to ChurchApps.
+ * Syncs local songs with ChurchApps by identifying missing songs and sending them in batches.
+ */
+export class ChurchAppsExport {
+    public static async sendSongsToChurchApps(data: ChurchAppsStartupLoadData): Promise<void> {
         const missingIds = await this.getMissingSongIds(data)
-        // console.log("Sending songs to Chums", missingIds.length)
+        // console.log("Sending songs to ChurchApps", missingIds.length)
         if (missingIds.length === 0) return
 
         // Get song data only for missing songs
-        const songData = this.getChumsSongData(missingIds, data)
+        const songData = this.getChurchAppsSongData(missingIds, data)
         const batchSize = 10
 
         // Send the missing songs in batches
         for (let i = 0; i < songData.length; i += batchSize) {
             const batch = songData.slice(i, i + batchSize)
-            await ChumsConnect.apiRequest({
+            await ChurchAppsConnect.apiRequest({
                 api: "content",
                 authenticated: true,
                 scope: "plans",
@@ -33,13 +48,13 @@ export class ChumsExport {
             })
         }
 
-        sendToMain(ToMain.TOAST, `Synced ${missingIds.length} new songs to Chums`)
+        sendToMain(ToMain.TOAST, `Synced ${missingIds.length} new songs to ChurchApps`)
     }
 
-    private static async getMissingSongIds(data: MainSendPayloads[Main.CHUMS_STARTUP_LOAD]): Promise<string[]> {
+    private static async getMissingSongIds(data: ChurchAppsStartupLoadData): Promise<string[]> {
         const freeShowIds = this.getAllFreeShowSongIds(data)
 
-        const missingSongsResponse = await ChumsConnect.apiRequest({
+        const missingSongsResponse = await ChurchAppsConnect.apiRequest({
             api: "content",
             authenticated: true,
             scope: "plans",
@@ -51,14 +66,14 @@ export class ChumsExport {
         return missingSongsResponse || []
     }
 
-    private static getAllFreeShowSongIds(data: MainSendPayloads[Main.CHUMS_STARTUP_LOAD]): string[] {
+    private static getAllFreeShowSongIds(data: ChurchAppsStartupLoadData): string[] {
         const shows = data.shows
         const selectedCategories = data.categories || ["song"]
         return Object.keys(shows).filter((key) => selectedCategories.includes(shows[key].category || ""))
     }
 
-    private static getChumsSongData(freeShowIds: string[], data: MainSendPayloads[Main.CHUMS_STARTUP_LOAD]): ChumsSongData[] {
-        const songList: ChumsSongData[] = []
+    private static getChurchAppsSongData(freeShowIds: string[], data: ChurchAppsStartupLoadData): ChurchAppsSongData[] {
+        const songList: ChurchAppsSongData[] = []
         const shows = data.shows
 
         freeShowIds.forEach((key: string) => {
@@ -66,7 +81,7 @@ export class ChumsExport {
             const showData = this.loadShowData(show.name, data.showsPath)
             if (!showData) return
 
-            const songData: ChumsSongData = {
+            const songData: ChurchAppsSongData = {
                 freeShowId: key,
                 title: showData[1].meta?.title || showData[1].name || "",
                 artist: showData[1].meta?.artist || "",

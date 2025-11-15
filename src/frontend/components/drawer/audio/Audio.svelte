@@ -2,6 +2,7 @@
     import { onDestroy } from "svelte"
     import { uid } from "uid"
     import { Main } from "../../../../types/IPC/Main"
+    import type { ClickEvent } from "../../../../types/Main"
     import { destroyMain, receiveMain, sendMain } from "../../../IPC/main"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
     import { activePlaylist, activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, outLocked, selectAllAudio, selected } from "../../../stores"
@@ -21,6 +22,7 @@
     import Folder from "../media/Folder.svelte"
     import AudioEffect from "./AudioEffect.svelte"
     import AudioFile from "./AudioFile.svelte"
+    import Metronome from "./Metronome.svelte"
 
     export let active: string | null
     export let searchValue = ""
@@ -34,7 +36,7 @@
 
     $: playlist = active && $audioPlaylists[active]
 
-    $: isDefault = ["all", "favourites", "effects_library", "microphones", "audio_streams"].includes(active || "")
+    $: isDefault = ["all", "favourites", "effects_library", "microphones", "audio_streams", "metronome"].includes(active || "")
     $: rootPath = isDefault || playlist ? "" : active !== null ? $audioFolders[active]?.path || "" : ""
     $: path = isDefault || playlist ? "" : rootPath
     $: name =
@@ -45,7 +47,7 @@
               : active === "effects_library"
                 ? "category.sound_effects"
                 : rootPath === path
-                  ? active !== "microphones" && active !== "audio_streams" && active !== null
+                  ? active !== "microphones" && active !== "audio_streams" && active !== "metronome" && active !== null
                       ? $audioFolders[active]?.name || ""
                       : ""
                   : splitPath(path).name
@@ -83,7 +85,7 @@
                 sendMain(Main.READ_FOLDER, { path, listFilesInFolders: true, disableThumbnails: true })
             }
         } else {
-            // microphones & audio_streams
+            // microphones & audio_streams & metronome
             prevActive = active
         }
     }
@@ -148,7 +150,7 @@
     function goBack() {
         const lastSlash = path.lastIndexOf("\\") > -1 ? path.lastIndexOf("\\") : path.lastIndexOf("/")
         const folder = path.slice(0, lastSlash)
-        path = folder.length > rootPath.length ? folder : rootPath
+        path = folder.length > rootPath.length ? folder || rootPath : rootPath
     }
 
     // selected will be cleared when clicked, so store them on mousedown
@@ -158,12 +160,12 @@
         else selectedFiles = []
     }
 
-    function createPlaylist(e) {
+    function createPlaylist(e: ClickEvent) {
         let playlistName = ""
         let files = fullFilteredFiles.filter((a) => !a.folder)
         if (selectedFiles.length) files = selectedFiles
 
-        if (e.ctrlKey || e.metaKey) {
+        if (e.detail.ctrl) {
             files = []
         } else if (!isDefault) {
             playlistName = name
@@ -209,16 +211,18 @@
 
 <svelte:window on:keydown={keydown} />
 
-<div class="scroll" style="flex: 1;overflow-y: auto;" bind:this={scrollElem}>
-    <div class="grid" style="height: 100%;">
+<div class="scroll" style="flex: 1;overflow-y: auto;" class:full={active === "audio_streams" || active === "effects_library"} bind:this={scrollElem}>
+    <div class="grid" style={active !== "audio_streams" && active !== "effects_library" && (playlist ? playlist.songs.length : fullFilteredFiles.length) ? "" : "height: 100%;"}>
         {#if active === "microphones"}
             <Microphones />
         {:else if active === "audio_streams"}
             <AudioStreams />
+        {:else if active === "metronome"}
+            <Metronome />
         {:else if playlist && playlistSettings}
             <div class="settings">
-                <MaterialNumberInput label="settings.audio_crossfade" value={playlist?.crossfade || 0} max={30} step={0.5} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
-                <MaterialNumberInput label="settings.playlist_volume" value={Number(((playlist?.volume || 1) * 100).toFixed(2))} min={1} max={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail / 100)} />
+                <MaterialNumberInput label="settings.audio_crossfade (s)" value={playlist?.crossfade || 0} max={30} step={0.5} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
+                <MaterialNumberInput label="settings.playlist_volume (%)" value={Number(((playlist?.volume || 1) * 100).toFixed(2))} min={1} max={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail / 100)} />
             </div>
 
             <!-- <CombinedInput>
@@ -248,7 +252,7 @@
                 {#key path}
                     {#each fullFilteredFiles as file}
                         {#if file.folder}
-                            <Folder bind:rootPath={path} name={file.name} path={file.path} mode="list" />
+                            <Folder name={file.name} path={file.path} mode="list" on:open={(e) => (path = e.detail)} />
                         {:else}
                             <AudioFile path={file.path} name={file.name} {active} />
                         {/if}
@@ -263,7 +267,7 @@
     </div>
 </div>
 
-{#if active === "microphones" || active === "effects_library"}
+{#if active === "microphones" || active === "effects_library" || active === "metronome"}
     <!-- nothing -->
 {:else if active === "audio_streams"}
     <FloatingInputs onlyOne>
@@ -281,7 +285,7 @@
                 $activePlaylist?.id === active ? AudioPlaylist.stop() : AudioPlaylist.start(active || "")
             }}
         >
-            <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id === active} />
+            <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id !== active} />
         </MaterialButton>
 
         <div class="divider" />
@@ -348,6 +352,13 @@
 {/if}
 
 <style>
+    .scroll {
+        padding-bottom: 60px;
+    }
+    .scroll.full {
+        padding-bottom: 0;
+    }
+
     .grid {
         display: flex;
         flex-direction: column;

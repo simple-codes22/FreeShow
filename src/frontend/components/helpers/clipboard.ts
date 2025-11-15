@@ -269,7 +269,7 @@ const selectActions = {
         if (!get(activeEdit).type || get(activeEdit).type === "show") {
             const ref = getLayoutRef()
             const editSlide = ref[get(activeEdit).slide!]
-            const showItems = _show().slides([editSlide.id]).get()[0].items
+            const showItems = _show().slides([editSlide.id]).get()[0]?.items
             itemCount = showItems.length
         } else if (get(activeEdit).id) {
             if (get(activeEdit).type === "overlay") {
@@ -453,7 +453,7 @@ const copyActions = {
         })
 
         const layoutMedia = layouts.filter((a) => a.background || a.audio?.length)
-        const showMedia = _show().get().media
+        const showMedia = _show().get()?.media || {}
         layoutMedia.forEach((layoutData) => {
             const mediaIds: string[] = []
             if (layoutData.background) mediaIds.push(layoutData.background)
@@ -625,7 +625,7 @@ const pasteActions = {
 
         // media
         if (data.media) {
-            const showMedia = _show().get().media
+            const showMedia = _show().get()?.media || {}
             _show().set({ key: "media", value: { ...showMedia, ...data.media } })
         }
 
@@ -1036,6 +1036,7 @@ const duplicateActions = {
         })
 
         projects.update((a) => {
+            if (!a[get(activeProject)!]?.shows) return a
             a[get(activeProject)!].shows.push(...data)
             return a
         })

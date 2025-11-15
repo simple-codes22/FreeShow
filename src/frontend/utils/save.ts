@@ -11,13 +11,14 @@ import {
     activePopup,
     activeProject,
     alertUpdates,
+    audioChannelsData,
     audioFolders,
     audioPlaylists,
     autoOutput,
     autosave,
     calendarAddShow,
     categories,
-    chumsSyncCategories,
+    contentProviderData,
     customMetadata,
     customizedIcons,
     dataPath,
@@ -31,6 +32,8 @@ import {
     effects,
     effectsLibrary,
     emitters,
+    eqPresets,
+    equalizerConfig,
     errorHasOccurred,
     events,
     folders,
@@ -144,12 +147,15 @@ export function save(closeWhenFinished = false, customTriggers: SaveActions = {}
         // themes: get(themes),
         volume: get(volume),
         gain: get(gain),
+        audioChannelsData: get(audioChannelsData),
         driveData: get(driveData),
         calendarAddShow: get(calendarAddShow),
         metronome: get(metronome),
+        equalizerConfig: get(equalizerConfig),
+        eqPresets: get(eqPresets),
         effectsLibrary: get(effectsLibrary),
         special: get(special),
-        chumsSyncCategories: get(chumsSyncCategories)
+        contentProviderData: get(contentProviderData),
     }
 
     // settings exclusive to the local machine (path names that shouldn't be synced with cloud)
@@ -308,7 +314,7 @@ const customSavedListener = {
     },
     projects: (data: Projects) => {
         removeDeleted(keysToID(data)).forEach((a) => {
-            data[a.id].shows.map((show) => {
+            data[a.id].shows?.map((show) => {
                 delete show.layout
             })
         })
@@ -372,6 +378,7 @@ const saveList: { [key in SaveList]: any } = {
     transitionData,
     volume: null,
     gain: null,
+    audioChannelsData,
     midiIn: actions,
     emitters,
     videoMarkers,
@@ -383,11 +390,13 @@ const saveList: { [key in SaveList]: any } = {
     driveData,
     calendarAddShow: null,
     metronome: null,
+    equalizerConfig: null,
+    eqPresets: null,
     effectsLibrary: null,
     special,
     companion: null,
     globalTags,
     customMetadata: null,
-    chumsSyncCategories: null,
+    contentProviderData,
     effects
 }

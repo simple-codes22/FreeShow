@@ -311,6 +311,7 @@ export type Popups =
     | "manage_metadata"
     | "manage_dynamic_values"
     | "player"
+    | "template_style_overrides"
     | "rename"
     | "color"
     | "color_gradient"
@@ -359,7 +360,7 @@ export type Popups =
     | "connect"
     | "cloud_update"
     | "cloud_method"
-    | "chums_sync_categories"
+    | "sync_categories"
     | "effect_items"
 
 export type DefaultProjectNames = "date" | "today" | "sunday" | "week" | "custom" | "blank"

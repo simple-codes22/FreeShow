@@ -59,7 +59,7 @@
         // style hash
         let s = ""
         clone(item?.lines)?.forEach((line) => {
-            let align = line.align.replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
+            let align = (line.align || "").replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
             s += align + lineStyleBg + lineStyleRadius // + line.chords?.map((a) => a.key)
             console.assert(Array.isArray(line?.text), "Text is not an array!")
             line?.text?.forEach((a) => {
@@ -777,5 +777,12 @@
         /* min-height: 100px;
   min-width: 100px;
   display: inline-table; */
+    }
+
+    /* bible parts */
+    .edit :global(.break span.uncertain) {
+        opacity: 0.7;
+        font-size: 0.8em;
+        font-style: italic;
     }
 </style>

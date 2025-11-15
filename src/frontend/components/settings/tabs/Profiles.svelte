@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { AccessType, Profile } from "../../../../types/Main"
     import { SettingsTabs } from "../../../../types/Tabs"
-    import { activeProfile, categories, dictionary, folders, overlayCategories, profiles, selectedProfile, stageShows, templateCategories } from "../../../stores"
+    import { activeProfile, categories, folders, overlayCategories, profiles, selectedProfile, stageShows, templateCategories } from "../../../stores"
     import { translateText } from "../../../utils/language"
     import { clone, keysToID, sortByName } from "../../helpers/array"
     import { history } from "../../helpers/history"
@@ -15,11 +15,11 @@
     // set id after deletion
     $: if (profileId !== "" && !$profiles[profileId]) profileId = ""
 
-    $: profileId = $selectedProfile ?? Object.keys($profiles)[0] ?? ""
+    $: profileId = $selectedProfile || ""
     $: currentProfile = $profiles[profileId] || clone(defaultProfile)
 
     const defaultProfile: Profile = {
-        name: $dictionary.example?.default || "Default",
+        name: translateText("example.default"),
         color: "",
         image: "",
         access: {}

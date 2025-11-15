@@ -1,13 +1,13 @@
 <script lang="ts">
     import { onDestroy } from "svelte"
     import { OUTPUT } from "../../../types/Channels"
-    import { activeStage, allOutputs, currentWindow, outputs, stageShows } from "../../stores"
+    import { activePage, activeStage, allOutputs, currentOutputSettings, currentWindow, outputs, settingsTab, stageShows, toggleOutputEnabled } from "../../stores"
     import { getAccess } from "../../utils/profile"
     import { send } from "../../utils/request"
     import { getSortedStageItems, shouldItemBeShown } from "../edit/scripts/itemHelpers"
     import { clone } from "../helpers/array"
     import { history } from "../helpers/history"
-    import { getStageOutputId, getStageResolution } from "../helpers/output"
+    import { enableStageOutput, getStageOutputId, getStageResolution } from "../helpers/output"
     import { getStyles } from "../helpers/style"
     import T from "../helpers/T.svelte"
     import FloatingInputs from "../input/FloatingInputs.svelte"
@@ -18,6 +18,7 @@
     import Snaplines from "../system/Snaplines.svelte"
     import { getSlideTextItems, stageItemToItem, updateStageShow } from "./stage"
     import Stagebox from "./Stagebox.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
 
     export let outputId = ""
     export let stageId = ""
@@ -72,7 +73,7 @@
     $: layout = $stageShows[stageLayoutId || ""] || {}
 
     // get video time (pre 1.4.0)
-    $: if ($currentWindow === "output" && Object.keys(layout.items || {}).find((id) => id.includes("video"))) requestVideoData()
+    $: if ($currentWindow === "output" && Object.keys(layout.items || {}).some((id) => id.includes("video"))) requestVideoData()
     let interval: NodeJS.Timeout | null = null
     function requestVideoData() {
         if (interval) return
@@ -114,7 +115,7 @@
         })
     }
 
-    $: currentOutput = $outputs[outputId] || {}
+    $: currentOutput = $outputs[outputId] || $allOutputs[outputId] || {}
     $: backgroundColor = currentOutput.transparent ? "transparent" : layout.settings?.color || "#000000"
 
     $: stageItems = getSortedStageItems(stageLayoutId, $stageShows)
@@ -123,13 +124,27 @@
     // { $activeTimers, $variables, $playingAudio, $playingAudioPaths, videoTime }
     let updater = 0
     const updaterInterval = setInterval(() => {
-        if (stageItems.find((a) => a.conditions)) updater++
-    }, 100)
+        if (stageItems.some((a) => a.conditions)) updater++
+    }, 500)
     onDestroy(() => clearInterval(updaterInterval))
 
     function checkVisibility(itemIndex: number, _updater: any) {
         const item = stageItems[itemIndex]
         return shouldItemBeShown(stageItemToItem(item), item.type === "slide_text" ? getSlideTextItems(layout, item, $outputs || $allOutputs) : [], { type: "stage" })
+    }
+
+    // stage output
+
+    $: hasStageOutput = edit && Object.values($outputs).some((a) => a.stageOutput && (a.enabled || a.stageOutput === stageLayoutId))
+
+    function createStageOutput() {
+        toggleOutputEnabled.set(true)
+        setTimeout(() => {
+            let id = enableStageOutput({ stageOutput: stageLayoutId, name: layout?.name || "" })
+            currentOutputSettings.set(id)
+            settingsTab.set("display_settings")
+            activePage.set("settings")
+        }, 100)
     }
 </script>
 
@@ -164,6 +179,14 @@
     </div> -->
 
     {#if edit && stageLayoutId}
+        {#if !hasStageOutput}
+            <FloatingInputs side="left" onlyOne>
+                <MaterialButton icon="display_settings" title="stage.create_stage_output" on:click={createStageOutput}>
+                    <T id="stage.create_stage_output" />
+                </MaterialButton>
+            </FloatingInputs>
+        {/if}
+
         <FloatingInputs>
             <MaterialZoom columns={zoom} min={0.2} max={4} defaultValue={1} addValue={0.1} on:change={updateZoom} />
         </FloatingInputs>

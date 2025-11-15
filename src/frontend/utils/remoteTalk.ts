@@ -1,9 +1,7 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
-import { Main } from "../../types/IPC/Main"
 import type { Show } from "../../types/Show"
 import type { ClientMessage } from "../../types/Socket"
-import { fetchBible, loadBible, receiveBibleContent } from "../components/drawer/bible/scripture"
 import { clone, keysToID, removeDeleted } from "../components/helpers/array"
 import { getBase64Path, getThumbnailPath, mediaSize } from "../components/helpers/media"
 import { getActiveOutputs, setOutput } from "../components/helpers/output"
@@ -12,13 +10,12 @@ import { getLayoutRef } from "../components/helpers/show"
 import { updateOut } from "../components/helpers/showActions"
 import { _show } from "../components/helpers/shows"
 import { clearAll } from "../components/output/clear"
-import { destroyMain, receiveMain } from "../IPC/main"
 import { REMOTE } from "./../../types/Channels"
-import { activeProject, connections, dictionary, driveData, folders, language, openedFolders, outLocked, outputs, overlays, projects, remotePassword, scriptures, scripturesCache, shows, showsCache, styles } from "./../stores"
-import { waitUntilValueIsDefined } from "./common"
+import { activeProject, connections, dictionary, driveData, folders, language, openedFolders, outLocked, outputs, overlays, projects, remotePassword, scriptures, shows, showsCache, styles } from "./../stores"
 import { translateText } from "./language"
 import { send } from "./request"
 import { sendData, setConnectedState } from "./sendData"
+import { loadJsonBible } from "../components/drawer/bible/scripture"
 
 // REMOTE
 
@@ -160,73 +157,122 @@ export const receiveREMOTE: any = {
         const { id, bookKey, chapterKey, bookIndex, chapterIndex } = msg.data || {}
         if (!id) return
 
-        const scriptureEntry: any = get(scriptures)[id]
-        const isApi = scriptureEntry?.api === true
+        const jsonBible = await loadJsonBible(id)
+        if (!jsonBible) return
 
-        if (isApi) {
-            const apiId = scriptureEntry?.id || id
+        const scriptureData: any = get(scriptures)[id]
+        const isApi = scriptureData?.api === true
 
-            if (bookKey && !chapterKey) {
-                // Fetch chapters only (mirror drawer behavior: some APIs include a 0 entry)
-                let chapters: any[] = await fetchBible("chapters", apiId, {
-                    bookId: bookKey,
-                    versesList: [],
-                    chapterId: `${bookKey}.1`
-                })
-                if (chapters?.[0] && Number.parseInt(chapters[0].number, 10) === 0) {
-                    chapters = chapters.slice(1)
-                }
-                const mapped = (chapters || []).map((c: any, i: number) => ({
-                    number: Number.isFinite(Number.parseInt(c.number, 10)) ? Number.parseInt(c.number, 10) : i + 1,
-                    keyName: c.keyName,
-                }))
-                msg.data.bibleUpdate = { kind: "chapters", id, bookIndex, chapters: mapped }
-                return msg
-            }
-
-            if (bookKey && chapterKey) {
-                // Fetch verses only
-                const versesMeta: any[] = await fetchBible("verses", apiId, {
-                    bookId: bookKey,
-                    chapterId: chapterKey,
-                    versesList: []
-                })
-                const versesTextResp: any[] = await fetchBible("versesText", apiId, {
-                    bookId: bookKey,
-                    chapterId: chapterKey,
-                    versesList: versesMeta
-                })
-                // Build the verses consistent with drawer's convertVerses (index-based mapping)
-                const mappedVerses = (versesTextResp || []).map((d: any, i: number) => ({
-                    number: (versesMeta?.[i]?.number) || i + 1,
-                    text: d?.content || d?.text || "",
-                }))
-                msg.data.bibleUpdate = { kind: "verses", id, bookIndex, chapterIndex, verses: mappedVerses }
-                return msg
-            }
-
-            // Initial: prefer cached books2 from scriptures store; fallback to fetch
-            const objectId = Object.entries(get(scriptures)).find(([_id, a]: any) => a?.id === id)?.[0] || id
-            const cachedBooks: any[] = (get(scriptures) as any)[objectId]?.books2 || []
-            const books: any[] = cachedBooks.length
-                ? cachedBooks
-                : await fetchBible("books", apiId, { versesList: [], bookId: "GEN", chapterId: "GEN.1" })
-            const mappedBooks = (books || []).map((b: any, i: number) => ({
-                name: b.name,
-                number: b.number || i + 1,
-                keyName: b.keyName,
-                chapters: [],
-            }))
-            msg.data.bible = { books: mappedBooks }
+        if (!isApi) {
+            msg.data.bible = jsonBible.data
             return msg
         }
 
-        const listenerId = receiveMain(Main.BIBLE, receiveBibleContent)
-        loadBible(id, 0, clone(get(scriptures)[id] || {}))
-        const bible = await waitUntilValueIsDefined(() => get(scripturesCache)[id])
-        destroyMain(listenerId)
+        if (bookKey && !chapterKey) {
+            try {
+                const bookData = await jsonBible.getBook(bookKey)
+                const mapped = (bookData.data.chapters || []).map((c) => ({
+                    number: c.number,
+                    keyName: c.number,
+                }))
+                msg.data.bibleUpdate = { kind: "chapters", id, bookIndex, chapters: mapped }
+            } catch (error) {
+                console.warn(`Failed to load book ${bookKey}:`, error)
+                msg.data.bibleUpdate = { kind: "chapters", id, bookIndex, chapters: [] }
+            }
+            return msg
+        }
 
-        msg.data.bible = bible
+        if (bookKey && chapterKey) {
+            try {
+                const bookData = await jsonBible.getBook(bookKey)
+                const chapterData = await bookData.getChapter(chapterKey)
+                const versesData = chapterData.data.verses
+                const mappedVerses = versesData.map((v) => ({
+                    number: v.number,
+                    text: v.text,
+                    keyName: v.number,
+                }))
+                msg.data.bibleUpdate = { kind: "verses", id, bookIndex, chapterIndex, verses: mappedVerses }
+            } catch (error) {
+                console.warn(`Failed to load ${bookKey} ${chapterKey}:`, error)
+                msg.data.bibleUpdate = { kind: "verses", id, bookIndex, chapterIndex, verses: [] }
+            }
+            return msg
+        }
+
+        const books = jsonBible.data.books
+        const mappedBooks = (books || []).map((b) => ({
+            name: b.name,
+            number: b.number,
+            keyName: b.id,
+            chapters: [],
+        }))
+        msg.data.bible = { books: mappedBooks }
+        return msg
+    },
+    SEARCH_SCRIPTURE: async (msg: ClientMessage) => {
+        const { id, searchTerm, searchType } = msg.data || {}
+        if (!id || !searchTerm) return
+
+        const jsonBible = await loadJsonBible(id)
+        if (!jsonBible) return
+
+        const scriptureData: any = get(scriptures)[id]
+        const isApi = scriptureData?.api === true
+
+        // For local bibles, return null to use cached search
+        if (!isApi) {
+            msg.data.searchResults = null
+            return msg
+        }
+
+        try {
+            if (searchType === "reference") {
+                // Use bookSearch for reference parsing (e.g., "John 3:16")
+                const result = jsonBible.bookSearch(searchTerm)
+                if (result) {
+                    // Get book name if we have book number
+                    let bookName: string | null = null
+                    if (result.book) {
+                        const bookObj = jsonBible.data.books.find((b: any) => b.number === result.book || b.id === result.book)
+                        bookName = bookObj?.name || null
+                    }
+                    msg.data.searchResults = {
+                        type: "reference",
+                        autocompleted: result.autocompleted || undefined,
+                        book: result.book || null,
+                        bookName: bookName,
+                        chapter: result.chapter || null,
+                        verses: result.verses || []
+                    }
+                } else {
+                    msg.data.searchResults = { type: "reference", found: false }
+                }
+            } else {
+                // Use textSearch for content search (minimum 3 characters)
+                if (searchTerm.length < 3) {
+                    msg.data.searchResults = { type: "text", results: [] }
+                    return msg
+                }
+                const results = await jsonBible.textSearch(searchTerm)
+                msg.data.searchResults = {
+                    type: "text",
+                    results: (results || []).slice(0, 50).map((ref: any) => ({
+                        book: ref.book,
+                        chapter: ref.chapter,
+                        verseNumber: typeof ref.verse === "object" ? ref.verse.number : ref.verse,
+                        reference: `${ref.book}.${ref.chapter}.${typeof ref.verse === "object" ? ref.verse.number : ref.verse}`,
+                        referenceFull: ref.reference || "",
+                        verseText: typeof ref.verse === "object" ? ref.verse.text : (ref.text || "")
+                    }))
+                }
+            }
+        } catch (err) {
+            console.error("Scripture search error:", err)
+            msg.data.searchResults = { type: searchType, error: true }
+        }
+
         return msg
     }
 }

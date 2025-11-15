@@ -235,7 +235,7 @@ function updateValues(groups: { slides: LayoutRef[]; groupData: GroupData }[], n
     return { newParents, groups, newData }
 
     function checkIfSlideExistsMorePlaces(layout, slide, i) {
-        const ref = _show().layouts([layout.layoutId]).ref()[0]
+        const ref = _show().layouts([layout.layoutId]).ref()[0] || []
         return ref.find((lslide) => lslide.id === slide.id && (lslide.index !== slide.index || layout.layoutId !== activeLayout || (i === 0 && slide.type === "child")))
     }
 }
@@ -599,7 +599,7 @@ export function splitItemInTwo(slideRef: LayoutRef, itemIndex: number, sel: { st
 
     const defaultLine = [
         {
-            align: lines[0].align || "",
+            align: lines[0]?.align || "",
             text: [{ style: (lines[0].text[1] || lines[0].text[0])?.style || "", value: "" }]
         }
     ]
@@ -641,7 +641,7 @@ export function splitItemInTwo(slideRef: LayoutRef, itemIndex: number, sel: { st
     refreshEditSlide.set(true)
 }
 
-function splitTextContentInHalf(text: string) {
+export function splitTextContentInHalf(text: string) {
     const center = Math.floor(text.length / 2)
 
     // find split index based on input "./,/!/?" closest to center
@@ -839,6 +839,11 @@ export function mergeTextboxes(customSlideIndex = -1) {
 
     // update
     history({ id: "UPDATE", newData: { data: slide, key: "slides", keys: [slideRef.id] }, oldData: { id: get(activeShow)?.id }, location: { page: "edit", id: "show_key" } })
+}
+
+export function removeTagsAndContent(input) {
+    const regex = /<[^>]*>[^<]*<\/[^>]*>/g
+    return input.replace(regex, "")
 }
 
 // BREAK LONG LINES
